@@ -16,6 +16,12 @@ def get_previous_week_range(today=None):
     return start_date, end_date
 
 
+def get_current_week_range(today=None):
+    today = today or datetime.now(KST).date()
+    start_date = today - timedelta(days=today.weekday())
+    return start_date, today
+
+
 def get_previous_month(today=None):
     today = today or datetime.now(KST).date()
     first_day_this_month = date(today.year, today.month, 1)

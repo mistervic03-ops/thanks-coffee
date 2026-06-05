@@ -71,7 +71,8 @@ def parse_thanks_text(text, sender_id):
     if receiver_id == sender_id:
         raise SelfRecognitionError()
 
-    rest = match.group(2).strip()
+    rest_emoji_count, rest = split_leading_emoji_count(match.group(2))
+    emoji_count += rest_emoji_count
     if not rest:
         raise ParseError(MISSING_MESSAGE)
 

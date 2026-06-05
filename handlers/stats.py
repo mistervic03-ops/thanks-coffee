@@ -5,8 +5,8 @@ from services.feed import post_summary
 from services.stats import (
     build_monthly_summary,
     build_weekly_summary,
+    get_current_week_range,
     get_previous_month,
-    get_previous_week_range,
     load_monthly_stats,
     load_weekly_stats,
 )
@@ -63,7 +63,7 @@ def _build_summary_text(summary_type):
     conn = get_connection()
     try:
         if summary_type == "weekly":
-            start_date, end_date = get_previous_week_range()
+            start_date, end_date = get_current_week_range()
             stats = load_weekly_stats(conn, start_date, end_date)
             return build_weekly_summary(stats)
 
