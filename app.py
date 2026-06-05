@@ -1,12 +1,14 @@
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from fastapi import FastAPI
+import logging
 import threading
 
 from config import SLACK_BOT_TOKEN, SLACK_APP_TOKEN
 from db.queries import init_db
 from handlers.thanks import register as register_thanks
 from handlers.stats import register as register_stats
+from scheduler import start_scheduler
 
 # Slack Bolt App
 bolt_app = App(token=SLACK_BOT_TOKEN)
@@ -28,6 +30,8 @@ def run_fastapi():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     init_db()
+    start_scheduler(bolt_app.client)
     threading.Thread(target=run_fastapi, daemon=True).start()
     SocketModeHandler(bolt_app, SLACK_APP_TOKEN).start()

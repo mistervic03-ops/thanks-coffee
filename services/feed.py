@@ -13,3 +13,11 @@ def post_to_feed(client, sender_id, result):
     )
     response = client.chat_postMessage(channel=FEED_CHANNEL_ID, text=text)
     return response["ts"]
+
+
+def post_summary(client, text):
+    if not FEED_ENABLED:
+        return None
+
+    response = client.chat_postMessage(channel=FEED_CHANNEL_ID, text=text)
+    return response["ts"]

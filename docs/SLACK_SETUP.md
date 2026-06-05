@@ -18,6 +18,10 @@ features:
       description: 팀원에게 감사를 전합니다
       usage_hint: "@팀원 [수량] 메시지"
       should_escape: false
+    - command: /summary
+      description: Recognition 요약을 feed 채널에 게시합니다
+      usage_hint: "weekly 또는 monthly"
+      should_escape: false
   bot_user:
     display_name: RecognitionBot
     always_online: true

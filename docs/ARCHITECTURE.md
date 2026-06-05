@@ -19,6 +19,13 @@ Slack Bolt, FastAPI health check, PostgreSQL을 단일 프로세스에서 실행
 
 feed 게시 실패 시에도 이미 저장된 recognition 기록은 남는다.
 
+파싱 방식:
+
+- 기본 형식은 `/thanks @팀원 메시지`이며 수량을 생략하면 1로 처리한다.
+- 숫자 수량은 `/thanks @팀원 3 메시지` 형식으로 받는다.
+- 이모지 수량은 `/thanks ☕☕☕ @팀원 메시지` 형식으로 받으며, 실제 이모지는 `RECOGNITION_EMOJI` 설정값을 사용한다.
+- 이모지 수량과 숫자 수량을 동시에 사용하면 파싱 에러로 처리한다.
+
 ## 3. Service layer 역할
 
 `services/`는 recognition 저장, feed 게시, 통계 생성을 담당한다.
@@ -47,3 +54,11 @@ feed 게시 실패 시에도 이미 저장된 recognition 기록은 남는다.
 ## 7. Scheduler 동작 방식
 
 APScheduler로 주간/월간 요약 게시를 예약한다.
+
+- `app.py`가 프로세스 시작 시 `start_scheduler(bolt_app.client)`를 호출한다.
+- 스케줄러는 `BackgroundScheduler`로 실행되며 Bolt Socket Mode 연결과 독립적으로 동작한다.
+- timezone은 명시적으로 `Asia/Seoul`을 사용한다.
+- 주간 요약은 매주 월요일 09:00 KST에 실행되며, 직전 월요일부터 직전 일요일까지의 recognition을 집계한다.
+- 월간 요약은 매월 1일 09:00 KST에 실행되며, 직전 월의 recognition을 집계한다.
+- 요약 집계는 `db/queries.py`, 메시지 생성은 `services/stats.py`, feed 채널 게시는 `services/feed.py`가 담당한다.
+- 요약 게시 실패나 Slack API 오류는 로그로 남기고 다음 스케줄 실행을 기다린다. 스케줄러 시작 실패도 Bolt 프로세스를 종료시키지 않는다.

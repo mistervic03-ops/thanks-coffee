@@ -40,6 +40,8 @@ def register(app):
                     body,
                     "❌ 형식이 올바르지 않습니다. 예: `/thanks @팀원 감사합니다`",
                 )
+            else:
+                post_ephemeral(client, body, f"❌ {exc.reason}")
             return
 
         conn = get_connection()
