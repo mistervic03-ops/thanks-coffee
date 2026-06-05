@@ -1,0 +1,25 @@
+# PRODUCT.md
+
+## 1. 왜 이 봇을 만드는가
+
+SME 팀이 Slack 안에서 가볍게 감사를 표현하고 기록하기 위해 만든다.
+
+## 2. HeyTaco와의 차이
+
+복잡한 보상 플랫폼이 아니라 recognition 중심의 작은 Slack-native 제품이다.
+
+## 3. Recognition First, Reward Second
+
+보상보다 감사 표현과 팀 문화 기록을 우선한다.
+
+## 4. MVP 기능 목록
+
+`/thanks` 커맨드, feed 게시, 기본 집계를 MVP 범위로 둔다.
+
+## 5. V2 후순위 기능
+
+상세 리포트, 추가 정책, 고급 자동화는 V2 이후에 검토한다.
+
+## 6. 성공 지표
+
+주간 사용량, 참여자 수, recognition 수를 기준으로 본다.
