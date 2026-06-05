@@ -1,3 +1,5 @@
+from slack_sdk.errors import SlackApiError
+
 from config import DAILY_LIMIT, FEED_CHANNEL_ID, RECOGNITION_EMOJI, RECOGNITION_UNIT
 from db.queries import get_connection, get_sent_today, get_total_received, update_feed_ts
 from services.feed import post_to_feed
@@ -14,11 +16,17 @@ from services.recognition import (
 
 
 def post_ephemeral(client, body, text):
-    client.chat_postEphemeral(
-        channel=body["channel_id"],
-        user=body["user_id"],
-        text=text,
-    )
+    try:
+        client.chat_postEphemeral(
+            channel=body["channel_id"],
+            user=body["user_id"],
+            text=text,
+        )
+    except SlackApiError as exc:
+        if exc.response.get("error") != "channel_not_found":
+            raise
+
+        client.chat_postMessage(channel=body["user_id"], text=text)
 
 
 def register(app):

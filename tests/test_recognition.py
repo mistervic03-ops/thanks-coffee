@@ -31,6 +31,13 @@ class RecognitionParsingTest(unittest.TestCase):
         self.assertEqual(request.unit_count, 2)
         self.assertEqual(request.message, "감사합니다")
 
+    def test_defaults_to_one_without_quantity(self):
+        request = parse_thanks_text("<@U1234> 감사합니다", "U9999")
+
+        self.assertEqual(request.receiver_id, "U1234")
+        self.assertEqual(request.unit_count, 1)
+        self.assertEqual(request.message, "감사합니다")
+
     def test_rejects_emoji_and_numeric_quantity(self):
         with self.assertRaises(ParseError) as ctx:
             parse_thanks_text("<@U1234> ☕☕ 3 감사합니다", "U9999")
