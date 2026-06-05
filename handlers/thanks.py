@@ -26,6 +26,8 @@ def register(app):
     def handle_thanks(ack, body, client):
         ack()
 
+        print(f"DEBUG text: {repr(body.get('text', ''))}")
+
         sender_id = body["user_id"]
         text = body.get("text", "")
         if text.strip().lower() == "status":
