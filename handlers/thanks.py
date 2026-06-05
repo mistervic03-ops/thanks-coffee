@@ -1,7 +1,8 @@
-from config import FEED_CHANNEL_ID, RECOGNITION_UNIT
-from db.queries import get_connection, update_feed_ts
+from config import DAILY_LIMIT, FEED_CHANNEL_ID, RECOGNITION_EMOJI, RECOGNITION_UNIT
+from db.queries import get_connection, get_sent_today, get_total_received, update_feed_ts
 from services.feed import post_to_feed
 from services.recognition import (
+    BOT_RECEIVER,
     INVALID_FORMAT,
     MISSING_MESSAGE,
     LimitError,
@@ -26,8 +27,13 @@ def register(app):
         ack()
 
         sender_id = body["user_id"]
+        text = body.get("text", "")
+        if text.strip().lower() == "status":
+            handle_status(client, body, sender_id)
+            return
+
         try:
-            request = parse_thanks_text(body.get("text", ""), sender_id)
+            request = parse_thanks_text(text, sender_id)
         except SelfRecognitionError:
             post_ephemeral(client, body, "❌ 자신에게는 보낼 수 없습니다.")
             return
@@ -42,6 +48,21 @@ def register(app):
                 )
             else:
                 post_ephemeral(client, body, f"❌ {exc.reason}")
+            return
+
+        try:
+            # Slack client is already here, so bot lookup stays in the handler and the parser remains Slack-free.
+            if receiver_is_bot(client, request.receiver_id):
+                raise ParseError(BOT_RECEIVER)
+        except ParseError as exc:
+            post_ephemeral(client, body, f"❌ {exc.reason}")
+            return
+        except Exception:
+            post_ephemeral(
+                client,
+                body,
+                "❌ 사용자 정보를 확인할 수 없습니다. 잠시 후 다시 시도해주세요.",
+            )
             return
 
         conn = get_connection()
@@ -97,3 +118,28 @@ def register(app):
                 f"오늘 남은 {RECOGNITION_UNIT}: {result.remaining}잔"
             ),
         )
+
+
+def handle_status(client, body, user_id):
+    conn = get_connection()
+    try:
+        sent_today = get_sent_today(conn, user_id)
+        total_received = get_total_received(conn, user_id)
+    finally:
+        conn.close()
+
+    remaining = max(DAILY_LIMIT - sent_today, 0)
+    post_ephemeral(
+        client,
+        body,
+        (
+            f"{RECOGNITION_EMOJI} 오늘 남은 {RECOGNITION_UNIT}: {remaining}잔\n"
+            f"📬 내가 받은 {RECOGNITION_UNIT} (누적): {total_received}잔"
+        ),
+    )
+
+
+def receiver_is_bot(client, receiver_id):
+    response = client.users_info(user=receiver_id)
+    user = response["user"]
+    return bool(user.get("is_bot"))

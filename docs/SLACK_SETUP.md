@@ -16,7 +16,7 @@ features:
   slash_commands:
     - command: /thanks
       description: 팀원에게 감사를 전합니다
-      usage_hint: "@팀원 [수량] 메시지"
+      usage_hint: "@팀원 [수량] 메시지 또는 status"
       should_escape: false
     - command: /summary
       description: Recognition 요약을 feed 채널에 게시합니다

@@ -81,10 +81,15 @@
 - 이모지와 단위는 `RECOGNITION_EMOJI`, `RECOGNITION_UNIT` config 변수를 사용한다. 코드에 하드코딩하지 않는다.
 - Socket Mode를 우선한다. 외부 URL을 필수로 만들지 않는다.
 - 웹 대시보드는 만들지 않는다.
+- Recognition 입력 방식은 MVP에서 `/thanks` slash command만 지원한다.
+- HeyTaco처럼 일반 채널 메시지에서 이모지를 감지하는 message event 기반 입력은 의도적으로 제외했다.
+- 이유: 봇이 채널의 모든 메시지를 읽는 `message.channels` 권한이 필요하며, SME 환경에서 심리적 거부감을 유발할 수 있다.
+- Recognition 생성 로직은 command와 분리되어 `services/recognition.py`에 있으므로, V2에서 필요해지면 message event handler를 추가하는 방식으로 확장한다.
+- 이 입력 방식 결정을 임의로 바꾸지 않는다. 변경이 필요하면 `docs/PRODUCT.md`를 먼저 업데이트한다.
 
 ## 6. Slack manifest commands
 
-- `/thanks`: 팀원에게 감사를 전한다. 예: `/thanks @팀원 감사합니다`, `/thanks @팀원 3 감사합니다`, `/thanks ☕☕☕ @팀원 감사합니다`
+- `/thanks`: 팀원에게 감사를 전하거나 내 상태를 조회한다. 예: `/thanks @팀원 감사합니다`, `/thanks @팀원 3 감사합니다`, `/thanks ☕☕☕ @팀원 감사합니다`, `/thanks status`
 - `/summary`: 운영자가 `weekly` 또는 `monthly` 요약을 feed 채널에 게시한다.
 
 ## 7. 문서 업데이트 규칙

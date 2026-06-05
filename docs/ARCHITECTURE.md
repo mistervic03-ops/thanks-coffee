@@ -8,14 +8,17 @@ Slack Bolt, FastAPI health check, PostgreSQL을 단일 프로세스에서 실행
 
 `handlers/thanks.py`가 `/thanks` command를 받으면 `ack()`를 즉시 호출한 뒤 service layer에 처리를 위임한다.
 
+`/thanks status`는 감사 생성 대신 sender의 오늘 남은 수량과 누적 수신량을 ephemeral message로 응답한다.
+
 처리 순서:
 
 1. `services/recognition.py`에서 command text를 파싱한다.
-2. sender의 daily limit을 확인한다.
-3. `recognition` 테이블에 감사 기록을 저장하고 commit한다.
-4. `services/feed.py`에서 feed 채널에 게시한다.
-5. feed message `ts`가 있으면 DB에 사후 업데이트한다.
-6. sender에게 ephemeral 성공 또는 에러 메시지를 보낸다.
+2. handler가 Slack `users.info`로 receiver가 봇 계정인지 확인하고, 봇이면 ephemeral 에러를 응답한다.
+3. sender의 daily limit을 확인한다.
+4. `recognition` 테이블에 감사 기록을 저장하고 commit한다.
+5. `services/feed.py`에서 feed 채널에 게시한다.
+6. feed message `ts`가 있으면 DB에 사후 업데이트한다.
+7. sender에게 ephemeral 성공 또는 에러 메시지를 보낸다.
 
 feed 게시 실패 시에도 이미 저장된 recognition 기록은 남는다.
 
@@ -25,6 +28,7 @@ feed 게시 실패 시에도 이미 저장된 recognition 기록은 남는다.
 - 숫자 수량은 `/thanks @팀원 3 메시지` 형식으로 받는다.
 - 이모지 수량은 `/thanks ☕☕☕ @팀원 메시지` 형식으로 받으며, 실제 이모지는 `RECOGNITION_EMOJI` 설정값을 사용한다.
 - 이모지 수량과 숫자 수량을 동시에 사용하면 파싱 에러로 처리한다.
+- receiver가 봇 계정인지 확인하는 Slack API 호출은 `client`를 이미 갖고 있는 handler에서 수행해 parser는 Slack 의존성 없이 유지한다.
 
 ## 3. Service layer 역할
 
