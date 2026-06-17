@@ -66,3 +66,10 @@ APScheduler로 주간/월간 요약 게시를 예약한다.
 - 월간 요약은 매월 1일 09:00 KST에 실행되며, 직전 월의 recognition을 집계한다.
 - 요약 집계는 `db/queries.py`, 메시지 생성은 `services/stats.py`, feed 채널 게시는 `services/feed.py`가 담당한다.
 - 요약 게시 실패나 Slack API 오류는 로그로 남기고 다음 스케줄 실행을 기다린다. 스케줄러 시작 실패도 Bolt 프로세스를 종료시키지 않는다.
+
+## 8. 수동 요약 게시
+
+`/summary weekly`와 `/summary monthly`는 `ADMIN_USER_IDS`에 포함된 Slack user만 실행할 수 있다.
+
+- 수동 주간 요약은 자동 weekly summary와 동일하게 직전 월요일부터 직전 일요일까지의 recognition을 집계한다.
+- 수동 월간 요약은 자동 monthly summary와 동일하게 직전 월의 recognition을 집계한다.

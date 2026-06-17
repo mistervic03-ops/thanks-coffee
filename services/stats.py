@@ -39,10 +39,10 @@ def load_monthly_stats(conn, year, month):
 
 def build_weekly_summary(stats):
     title = (
-        "📊 이번 주 Recognition 요약 "
+        "📊 직전 주 Recognition 요약 "
         f"({_format_date(stats['start_date'])} – {_format_date(stats['end_date'])})"
     )
-    return _build_summary(title, stats, "이번 주에는 첫 감사를 남겨보세요.")
+    return _build_summary(title, stats, "직전 주에는 첫 감사가 없었습니다.")
 
 
 def build_monthly_summary(stats):

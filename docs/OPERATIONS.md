@@ -16,9 +16,9 @@
 
 ## 3. 수동 요약 게시
 
-Slack에서 운영자가 직접 요약을 게시할 수 있다.
+Slack에서 `ADMIN_USER_IDS`에 포함된 운영자가 직접 요약을 게시할 수 있다.
 
-- `/summary weekly`: 직전 월요일부터 직전 일요일까지의 요약을 feed 채널에 게시한다.
+- `/summary weekly`: 직전 월요일부터 직전 일요일까지의 요약을 feed 채널에 게시한다. 자동 weekly summary와 같은 기준이며, 실패한 주간 게시를 수동으로 재게시할 때 사용한다.
 - `/summary monthly`: 직전 월의 요약을 feed 채널에 게시한다.
 
 Slack command를 쓰기 어려운 상황에서는 Python shell에서 `scheduler.run_weekly_summary(client)` 또는 `scheduler.run_monthly_summary(client)`를 직접 호출해 같은 경로를 실행한다.

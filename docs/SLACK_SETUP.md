@@ -46,6 +46,10 @@ Socket Mode를 켜고 app-level token을 발급한다.
 
 `.env.example`의 값을 실제 Slack/DB 값으로 채운다.
 
+- `ADMIN_USER_IDS`: `/summary`를 실행할 수 있는 운영자 Slack user ID 목록이다. 쉼표로 구분한다. 예: `U123,U456`
+- `FEED_ENABLED=false`이면 `FEED_CHANNEL_ID`는 비워둘 수 있다.
+- `FEED_ENABLED=true`이면 `FEED_CHANNEL_ID`가 필수이며, feed 채널에 봇이 초대되어 있어야 한다.
+
 ## 5. recognition 채널에 봇 초대
 
 feed를 게시할 채널에 RecognitionBot을 초대한다.

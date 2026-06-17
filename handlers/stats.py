@@ -1,12 +1,13 @@
 import logging
 
+from config import ADMIN_USER_IDS
 from db.queries import get_connection
 from services.feed import post_summary
 from services.stats import (
     build_monthly_summary,
     build_weekly_summary,
-    get_current_week_range,
     get_previous_month,
+    get_previous_week_range,
     load_monthly_stats,
     load_weekly_stats,
 )
@@ -23,10 +24,18 @@ def post_ephemeral(client, body, text):
     )
 
 
+def is_summary_admin(user_id):
+    return user_id in ADMIN_USER_IDS
+
+
 def register(app):
     @app.command("/summary")
     def handle_summary(ack, body, client):
         ack()
+
+        if not is_summary_admin(body["user_id"]):
+            post_ephemeral(client, body, "❌ 이 명령어를 실행할 권한이 없습니다.")
+            return
 
         summary_type = (body.get("text") or "").strip().lower()
         if summary_type not in {"weekly", "monthly"}:
@@ -63,7 +72,7 @@ def _build_summary_text(summary_type):
     conn = get_connection()
     try:
         if summary_type == "weekly":
-            start_date, end_date = get_current_week_range()
+            start_date, end_date = get_previous_week_range()
             stats = load_weekly_stats(conn, start_date, end_date)
             return build_weekly_summary(stats)
 
