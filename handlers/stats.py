@@ -37,17 +37,26 @@ def register(app):
             post_ephemeral(client, body, "❌ 이 명령어를 실행할 권한이 없습니다.")
             return
 
-        summary_type = (body.get("text") or "").strip().lower()
-        if summary_type not in {"weekly", "monthly"}:
+        parts = (body.get("text") or "").strip().lower().split()
+        summary_type = parts[0] if parts else ""
+        preview = len(parts) == 2 and parts[1] == "preview"
+        if summary_type not in {"weekly", "monthly"} or len(parts) > 2 or (len(parts) == 2 and not preview):
             post_ephemeral(
                 client,
                 body,
-                "❌ 사용법: `/summary weekly` 또는 `/summary monthly`",
+                (
+                    "❌ 사용법: `/summary weekly`, `/summary monthly`, "
+                    "`/summary weekly preview`, `/summary monthly preview`"
+                ),
             )
             return
 
         try:
             summary_text = _build_summary_text(summary_type)
+            if preview:
+                post_ephemeral(client, body, summary_text)
+                return
+
             feed_message_ts = post_summary(client, summary_text)
         except Exception:
             logger.exception("Failed to post %s summary", summary_type)

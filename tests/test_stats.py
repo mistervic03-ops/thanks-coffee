@@ -86,6 +86,43 @@ class SummaryCommandTest(unittest.TestCase):
         self.assertEqual(client.ephemeral_messages[0]["user"], "UOTHER")
         self.assertIn("권한", client.ephemeral_messages[0]["text"])
 
+    def test_summary_preview_rejects_unauthorized_user(self):
+        app = FakeApp()
+        client = FakeClient()
+        ack = Mock()
+        body = {"user_id": "UOTHER", "channel_id": "C123", "text": "weekly preview"}
+
+        summary_handler.register(app)
+        with patch.object(summary_handler, "ADMIN_USER_IDS", frozenset({"UADMIN"})), \
+            patch.object(summary_handler, "_build_summary_text") as build_summary_text, \
+            patch.object(summary_handler, "post_summary") as post_summary:
+            app.commands["/summary"](ack, body, client)
+
+        ack.assert_called_once()
+        build_summary_text.assert_not_called()
+        post_summary.assert_not_called()
+        self.assertEqual(len(client.ephemeral_messages), 1)
+        self.assertIn("권한", client.ephemeral_messages[0]["text"])
+
+    def test_summary_weekly_preview_sends_ephemeral_without_posting_feed(self):
+        app = FakeApp()
+        client = FakeClient()
+        ack = Mock()
+        body = {"user_id": "UADMIN", "channel_id": "C123", "text": "weekly preview"}
+
+        summary_handler.register(app)
+        with patch.object(summary_handler, "ADMIN_USER_IDS", frozenset({"UADMIN"})), \
+            patch.object(summary_handler, "_build_summary_text", return_value="weekly summary") as build_summary_text, \
+            patch.object(summary_handler, "post_summary") as post_summary:
+            app.commands["/summary"](ack, body, client)
+
+        ack.assert_called_once()
+        build_summary_text.assert_called_once_with("weekly")
+        post_summary.assert_not_called()
+        self.assertEqual(len(client.ephemeral_messages), 1)
+        self.assertEqual(client.ephemeral_messages[0]["user"], "UADMIN")
+        self.assertEqual(client.ephemeral_messages[0]["text"], "weekly summary")
+
     def test_manual_weekly_summary_uses_previous_week_range(self):
         conn = FakeConnection()
         stats = {"start_date": date(2026, 5, 25), "end_date": date(2026, 5, 31)}

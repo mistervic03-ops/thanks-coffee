@@ -71,3 +71,5 @@ feed를 게시할 채널에 RecognitionBot을 초대한다.
 ## 6. 동작 확인 체크리스트
 
 DB 초기화와 `/thanks` ephemeral 응답을 확인한다. `HEALTH_CHECK_ENABLED=true`이면 health check도 함께 확인한다.
+
+운영자가 feed 게시 없이 summary를 확인하려면 `/summary weekly preview` 또는 `/summary monthly preview`를 사용한다. 자세한 운영 절차는 `docs/OPERATIONS.md`를 따른다.
