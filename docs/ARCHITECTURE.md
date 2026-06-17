@@ -2,7 +2,7 @@
 
 ## 1. 전체 구조
 
-Slack Bolt, FastAPI health check, PostgreSQL을 단일 프로세스에서 실행한다.
+기본 실행 경로는 Slack Bolt Socket Mode와 PostgreSQL 중심이다. FastAPI health check는 optional component이며, `HEALTH_CHECK_ENABLED=true`일 때만 같은 프로세스 안에서 HTTP 서버를 함께 실행한다.
 
 ## 2. Slash command 처리 흐름
 
@@ -28,6 +28,7 @@ feed 게시 실패 시에도 이미 저장된 recognition 기록은 남는다.
 - 숫자 수량은 `/thanks @팀원 3 메시지` 형식으로 받는다.
 - 이모지 수량은 `/thanks ☕☕☕ @팀원 메시지` 형식으로 받으며, 실제 이모지는 `RECOGNITION_EMOJI` 설정값을 사용한다.
 - 이모지 수량과 숫자 수량을 동시에 사용하면 파싱 에러로 처리한다.
+- 사용자가 보는 입력은 `@팀원`이지만, 앱 내부 parser는 Slack이 변환한 `<@USER_ID>` payload를 처리한다. 따라서 Slack manifest의 slash command `should_escape`는 `true`여야 한다.
 - receiver가 봇 계정인지 확인하는 Slack API 호출은 `client`를 이미 갖고 있는 handler에서 수행해 parser는 Slack 의존성 없이 유지한다.
 
 ## 3. Service layer 역할
@@ -44,6 +45,8 @@ feed 게시 실패 시에도 이미 저장된 recognition 기록은 남는다.
 - 별도 daily limit 테이블은 두지 않는다.
 - sender별로 오늘 보낸 `unit_count` 합계를 조회한다.
 - **KST (UTC+9) 기준으로 하루를 계산한다.**
+- daily limit 확인과 insert 사이에는 sender/KST-day 단위 transaction advisory lock을 잡아 같은 사용자의 같은 날짜 요청을 직렬화한다.
+- 이 lock은 새 counter table 없이 PoC 범위에서 limit race를 줄이기 위한 최소 보강이다.
 - 요청 `unit_count`가 남은 수량을 초과하면 저장하지 않고 ephemeral 에러를 보낸다.
 
 ## 6. Feed posting 방식
@@ -57,9 +60,9 @@ feed 게시 실패 시에도 이미 저장된 recognition 기록은 남는다.
 
 ## 7. Scheduler 동작 방식
 
-APScheduler로 주간/월간 요약 게시를 예약한다.
+Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APScheduler로 주간/월간 요약 게시를 예약한다. Scheduler가 꺼져 있어도 slash command 기반 `/summary weekly`, `/summary monthly` 흐름은 유지된다.
 
-- `app.py`가 프로세스 시작 시 `start_scheduler(bolt_app.client)`를 호출한다.
+- `app.py`가 프로세스 시작 시 `SCHEDULER_ENABLED`를 확인하고, true이면 `start_scheduler(bolt_app.client)`를 호출한다.
 - 스케줄러는 `BackgroundScheduler`로 실행되며 Bolt Socket Mode 연결과 독립적으로 동작한다.
 - timezone은 명시적으로 `Asia/Seoul`을 사용한다.
 - 주간 요약은 매주 월요일 09:00 KST에 실행되며, 직전 월요일부터 직전 일요일까지의 recognition을 집계한다.

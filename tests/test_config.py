@@ -7,7 +7,7 @@ os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test")
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
 os.environ.setdefault("FEED_CHANNEL_ID", "C123")
 
-from config import parse_admin_user_ids, validate_feed_config  # noqa: E402
+from config import parse_admin_user_ids, parse_enabled_flag, validate_feed_config  # noqa: E402
 
 
 class ConfigTest(unittest.TestCase):
@@ -23,6 +23,11 @@ class ConfigTest(unittest.TestCase):
     def test_feed_enabled_requires_channel(self):
         with self.assertRaisesRegex(RuntimeError, "FEED_CHANNEL_ID"):
             validate_feed_config(True, "")
+
+    def test_enabled_flag_only_accepts_true(self):
+        self.assertTrue(parse_enabled_flag("true"))
+        self.assertFalse(parse_enabled_flag("false"))
+        self.assertFalse(parse_enabled_flag(""))
 
 
 if __name__ == "__main__":

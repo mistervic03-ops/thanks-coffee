@@ -6,13 +6,15 @@
 
 ## 2. 스케줄 변경
 
-주간/월간 요약 스케줄은 `scheduler.py`에서 관리한다.
+PoC 단계의 기본 운영은 Slack에서 `/summary weekly` 또는 `/summary monthly`를 수동 실행하는 방식이다.
+
+`SCHEDULER_ENABLED=true`이면 주간/월간 요약 스케줄이 자동 실행된다. 자동 스케줄은 `scheduler.py`에서 관리한다.
 
 - 주간 요약: 매주 월요일 09:00 KST
 - 월간 요약: 매월 1일 09:00 KST
 - timezone은 `Asia/Seoul`로 고정한다.
 
-스케줄을 바꾸려면 `scheduler.py`의 `add_job` 설정을 수정하고 프로세스를 재시작한다.
+PoC에서는 `SCHEDULER_ENABLED=false`로 시작하고, 자동 게시가 필요해지면 `true`로 바꾼 뒤 프로세스를 재시작한다. 스케줄 시간을 바꾸려면 `scheduler.py`의 `add_job` 설정을 수정하고 프로세스를 재시작한다.
 
 ## 3. 수동 요약 게시
 
@@ -25,7 +27,18 @@ Slack command를 쓰기 어려운 상황에서는 Python shell에서 `scheduler.
 
 ## 4. 장애 시 확인 순서
 
-Slack 토큰, DB 연결, health check, 앱 로그 순서로 확인한다.
+Slack 토큰, DB 연결, 앱 로그, Slack command 동작 여부 순서로 확인한다. `HEALTH_CHECK_ENABLED=true`이면 health check도 함께 확인한다.
+
+`HEALTH_CHECK_ENABLED=false`이면 HTTP health check 서버가 실행되지 않으므로, `/thanks status` 같은 Slack command 응답과 앱 로그를 기준으로 확인한다.
+
+설정 문제를 의심할 때는 아래를 먼저 확인한다.
+
+- `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `DATABASE_URL`이 설정되어 있는지
+- `FEED_ENABLED=true`이면 `FEED_CHANNEL_ID`가 설정되어 있고, 봇이 feed 채널에 초대되어 있는지
+- `/summary`를 사용할 운영자가 `ADMIN_USER_IDS`에 포함되어 있는지
+- 자동 요약을 기대한다면 `SCHEDULER_ENABLED=true`인지
+- HTTP health check를 기대한다면 `HEALTH_CHECK_ENABLED=true`인지
+- 환경변수 변경 후 프로세스를 재시작했는지
 
 요약 게시 실패 시에는 아래를 확인한다.
 
@@ -35,7 +48,7 @@ Slack 토큰, DB 연결, health check, 앱 로그 순서로 확인한다.
 - Slack `chat:write` scope와 bot token
 - DB 연결과 `recognition.created_at` 데이터
 
-요약 게시 실패는 로그만 남기며 Bolt 프로세스와 다음 스케줄 실행은 유지된다.
+요약 게시 실패는 로그만 남기며 Bolt 프로세스는 유지된다. `SCHEDULER_ENABLED=true`이면 다음 스케줄 실행도 유지된다.
 
 ## 5. 운영자용 조회 쿼리
 

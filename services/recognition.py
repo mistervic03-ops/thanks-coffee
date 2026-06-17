@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 
 from config import DAILY_LIMIT, RECOGNITION_EMOJI
-from db.queries import get_sent_today, get_total_received, insert_recognition
+from db.queries import get_sent_today, get_total_received, insert_recognition, lock_daily_limit
 
 
 INVALID_FORMAT = "invalid_format"
@@ -104,6 +104,7 @@ parse_thanks = parse_thanks_text
 
 
 def create_recognition(conn, sender_id, request, source_channel_id):
+    lock_daily_limit(conn, sender_id)
     sent_today = get_sent_today(conn, sender_id)
     remaining = max(DAILY_LIMIT - sent_today, 0)
     if request.unit_count > remaining:

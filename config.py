@@ -15,6 +15,10 @@ def parse_admin_user_ids(value: str) -> frozenset[str]:
     return frozenset(user_id.strip() for user_id in value.split(",") if user_id.strip())
 
 
+def parse_enabled_flag(value: str) -> bool:
+    return value.lower() == "true"
+
+
 def validate_feed_config(feed_enabled: bool, feed_channel_id: str) -> None:
     if feed_enabled and not feed_channel_id:
         raise RuntimeError("FEED_CHANNEL_ID is required when FEED_ENABLED=true")
@@ -22,9 +26,11 @@ def validate_feed_config(feed_enabled: bool, feed_channel_id: str) -> None:
 
 # Recognition 정책
 DAILY_LIMIT: int = int(os.getenv("DAILY_LIMIT", "5"))
-FEED_ENABLED: bool = os.getenv("FEED_ENABLED", "true").lower() == "true"
+FEED_ENABLED: bool = parse_enabled_flag(os.getenv("FEED_ENABLED", "true"))
 FEED_CHANNEL_ID: str = os.getenv("FEED_CHANNEL_ID", "")
 ADMIN_USER_IDS: frozenset[str] = parse_admin_user_ids(os.getenv("ADMIN_USER_IDS", ""))
+SCHEDULER_ENABLED: bool = parse_enabled_flag(os.getenv("SCHEDULER_ENABLED", "false"))
+HEALTH_CHECK_ENABLED: bool = parse_enabled_flag(os.getenv("HEALTH_CHECK_ENABLED", "false"))
 
 validate_feed_config(FEED_ENABLED, FEED_CHANNEL_ID)
 

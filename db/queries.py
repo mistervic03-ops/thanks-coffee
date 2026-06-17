@@ -1,6 +1,12 @@
+import hashlib
 import psycopg2
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
 from config import DATABASE_URL
+
+
+KST = ZoneInfo("Asia/Seoul")
 
 
 def get_connection():
@@ -36,6 +42,21 @@ def get_sent_today(conn, sender_id):
             (sender_id,),
         )
         return cur.fetchone()[0]
+
+
+def lock_daily_limit(conn, sender_id):
+    today = datetime.now(KST).date().isoformat()
+    lock_key = _daily_limit_lock_key(sender_id, today)
+    with conn.cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (lock_key,))
+
+
+def _daily_limit_lock_key(sender_id, kst_date):
+    digest = hashlib.blake2b(
+        f"daily-limit:{sender_id}:{kst_date}".encode("utf-8"),
+        digest_size=8,
+    ).digest()
+    return int.from_bytes(digest, byteorder="big", signed=True)
 
 
 def insert_recognition(conn, sender_id, receiver_id, message, unit_count, source_channel_id):
