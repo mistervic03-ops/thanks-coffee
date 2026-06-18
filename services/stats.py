@@ -44,23 +44,23 @@ def load_monthly_stats(conn, year, month):
 
 def build_weekly_summary(stats):
     title = (
-        "📊 직전 주 Recognition 요약 "
+        "📊 직전 주 모카 감사 요약 "
         f"({_format_date(stats['start_date'])} – {_format_date(stats['end_date'])})"
     )
-    return _build_summary(title, stats, "직전 주에는 첫 감사가 없었습니다.")
+    return _build_summary(title, stats, "직전 주에는 아직 첫 감사가 없었어요.")
 
 
 def build_monthly_summary(stats):
-    title = f"📊 {stats['year']}년 {stats['month']}월 Recognition 요약"
+    title = f"📊 {stats['year']}년 {stats['month']}월 모카 감사 요약"
     return _build_summary(title, stats, "이번 달에는 첫 감사를 남겨보세요.")
 
 
 def build_current_month_summary(stats):
     title = (
         f"📊 {stats['end_date'].year}년 {stats['end_date'].month}월 "
-        "현재까지 Recognition 요약"
+        "현재까지 모카 감사 요약"
     )
-    return _build_summary(title, stats, "이번 달에는 첫 감사가 없었습니다.")
+    return _build_summary(title, stats, "이번 달에는 아직 첫 감사가 없었어요.")
 
 
 def _build_summary(title, stats, empty_message):
@@ -105,6 +105,9 @@ def _format_rankings(rankings):
 
 
 def _format_unit_count(unit_count):
+    if unit_count == 1:
+        return f"한 잔의 {RECOGNITION_UNIT}"
+
     return f"{unit_count}잔의 {RECOGNITION_UNIT}"
 
 

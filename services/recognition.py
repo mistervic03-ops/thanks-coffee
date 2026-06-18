@@ -8,7 +8,7 @@ from db.queries import get_sent_today, get_total_received, insert_recognition, l
 INVALID_FORMAT = "invalid_format"
 MISSING_MESSAGE = "missing_message"
 MULTIPLE_QUANTITY_METHODS = "수량은 이모지 또는 숫자 중 하나만 사용해주세요."
-BOT_RECEIVER = "봇에게는 보낼 수 없습니다."
+BOT_RECEIVER = "봇에게는 보낼 수 없어요."
 VARIATION_SELECTOR_16 = "\ufe0f"
 COFFEE_EMOJI = "☕"
 COFFEE_ALIAS = ":coffee:"

@@ -36,7 +36,7 @@ def register(app):
         ack()
 
         if not is_summary_admin(body["user_id"]):
-            post_ephemeral(client, body, "❌ 이 명령어를 실행할 권한이 없습니다.")
+            post_ephemeral(client, body, "❌ 이 명령어를 실행할 권한이 없어요.")
             return
 
         parts = (body.get("text") or "").strip().lower().split()
@@ -70,17 +70,17 @@ def register(app):
             post_ephemeral(
                 client,
                 body,
-                "❌ 요약 게시에 실패했습니다. 앱 로그와 feed 채널 설정을 확인해주세요.",
+                "❌ 요약을 게시하지 못했어요. 앱 로그와 feed 채널 설정을 확인해주세요.",
             )
             return
 
         if feed_message_ts:
-            post_ephemeral(client, body, "✅ 요약을 feed 채널에 게시했습니다.")
+            post_ephemeral(client, body, "✅ 모카 감사 요약을 feed 채널에 올렸어요.")
         else:
             post_ephemeral(
                 client,
                 body,
-                "✅ 요약을 생성했습니다. FEED_ENABLED=false라 feed 채널에는 게시하지 않았습니다.",
+                "✅ 모카 감사 요약을 만들었어요. FEED_ENABLED=false라 feed 채널에는 올리지 않았어요.",
             )
 
 

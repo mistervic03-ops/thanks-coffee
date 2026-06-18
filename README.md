@@ -1,6 +1,6 @@
-# Recognition Bot
+# 모카 (Mocha)
 
-Slack-native recognition bot for small teams.
+Slack 안에서 팀원에게 감사 커피를 전하고 기록하는 작은 Recognition Bot.
 
 ## Setup
 

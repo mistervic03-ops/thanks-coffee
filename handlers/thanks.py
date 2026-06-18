@@ -43,7 +43,7 @@ def register(app):
         try:
             request = parse_thanks_text(text, sender_id)
         except SelfRecognitionError:
-            post_ephemeral(client, body, "❌ 자신에게는 보낼 수 없습니다.")
+            post_ephemeral(client, body, "❌ 자신에게는 보낼 수 없어요.")
             return
         except ParseError as exc:
             if exc.reason == MISSING_MESSAGE:
@@ -52,7 +52,7 @@ def register(app):
                 post_ephemeral(
                     client,
                     body,
-                    "❌ 형식이 올바르지 않습니다. 예: `/thanks @팀원 감사합니다`",
+                    "❌ 형식이 맞지 않아요. 예: `/thanks @팀원 감사합니다`",
                 )
             else:
                 post_ephemeral(client, body, f"❌ {exc.reason}")
@@ -69,7 +69,7 @@ def register(app):
             post_ephemeral(
                 client,
                 body,
-                "❌ 사용자 정보를 확인할 수 없습니다. 잠시 후 다시 시도해주세요.",
+                "❌ 사용자 정보를 확인할 수 없어요. 잠시 후 다시 시도해주세요.",
             )
             return
 
@@ -89,8 +89,8 @@ def register(app):
                     client,
                     body,
                     (
-                        f"❌ 오늘 보낼 수 있는 {RECOGNITION_UNIT}가 "
-                        f"{exc.remaining}잔 남았습니다. ({exc.requested}잔 요청)"
+                        f"❌ 오늘은 {_format_unit_count(exc.remaining)}만 "
+                        f"더 보낼 수 있어요. (요청: {_format_unit_count(exc.requested)})"
                     ),
                 )
                 return
@@ -110,7 +110,7 @@ def register(app):
                 post_ephemeral(
                     client,
                     body,
-                    "✅ 감사는 기록되었지만 feed 채널 게시에 실패했습니다.",
+                    "✅ 감사는 기록됐지만 feed 채널에는 올리지 못했어요.",
                 )
                 return
 
@@ -121,9 +121,9 @@ def register(app):
             client,
             body,
             (
-                f"✅ <@{request.receiver_id}>님에게 "
-                f"{request.unit_count}잔의 {RECOGNITION_UNIT}를 보냈습니다. "
-                f"오늘 남은 {RECOGNITION_UNIT}: {result.remaining}잔"
+                f"☕ 모카가 <@{request.receiver_id}>님께 "
+                f"{_format_unit_count(request.unit_count)}을 전해드렸어요.\n"
+                f"오늘은 아직 {_format_unit_count(result.remaining)}이 남아 있어요."
             ),
         )
 
@@ -141,10 +141,22 @@ def handle_status(client, body, user_id):
         client,
         body,
         (
-            f"{RECOGNITION_EMOJI} 오늘 남은 {RECOGNITION_UNIT}: {remaining}잔\n"
-            f"📬 내가 받은 {RECOGNITION_UNIT} (누적): {total_received}잔"
+            f"{RECOGNITION_EMOJI} 오늘은 아직 "
+            f"{_format_unit_count(remaining)}이 남아 있어요.\n"
+            f"📬 지금까지 받은 {RECOGNITION_UNIT}: {_format_count(total_received)}"
         ),
     )
+
+
+def _format_unit_count(unit_count):
+    return f"{RECOGNITION_UNIT} {_format_count(unit_count)}"
+
+
+def _format_count(unit_count):
+    if unit_count == 1:
+        return "한 잔"
+
+    return f"{unit_count}잔"
 
 
 def receiver_is_bot(client, receiver_id):

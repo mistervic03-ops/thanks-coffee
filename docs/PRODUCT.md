@@ -2,11 +2,11 @@
 
 ## 1. 왜 이 봇을 만드는가
 
-SME 팀이 Slack 안에서 가볍게 감사를 표현하고 기록하기 위해 만든다.
+모카는 SME 팀이 Slack 안에서 가볍게 감사를 표현하고 기록하기 위한 작은 Slack-native 도구다.
 
 ## 2. HeyTaco와의 차이
 
-복잡한 보상 플랫폼이 아니라 recognition 중심의 작은 Slack-native 제품이다.
+복잡한 보상 플랫폼이 아니라 감사 문화 중심의 작은 Slack-native 제품이다.
 
 ## 3. Recognition First, Reward Second
 
@@ -14,7 +14,7 @@ SME 팀이 Slack 안에서 가볍게 감사를 표현하고 기록하기 위해 
 
 ## 4. MVP 기능 목록
 
-- `/thanks` slash command 방식으로 recognition을 전달한다.
+- `/thanks` slash command 방식으로 감사를 전달한다.
 - 수량은 이모지 반복(`☕☕☕`) 또는 숫자로 지정할 수 있다.
 - `/thanks status`로 잔여 수량과 누적 수신량을 조회한다.
 - feed 게시, 주간/월간 요약 게시, 기본 집계를 MVP 범위로 둔다.
@@ -29,4 +29,4 @@ SME 팀이 Slack 안에서 가볍게 감사를 표현하고 기록하기 위해 
 
 ## 6. 성공 지표
 
-주간 사용량, 참여자 수, recognition 수를 기준으로 본다.
+주간 사용량, 참여자 수, 감사 기록 수를 기준으로 본다.
