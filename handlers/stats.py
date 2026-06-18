@@ -4,8 +4,10 @@ from config import ADMIN_USER_IDS
 from db.queries import get_connection
 from services.feed import post_summary
 from services.stats import (
+    build_current_month_summary,
     build_monthly_summary,
     build_weekly_summary,
+    get_current_month_range,
     get_previous_month,
     get_previous_week_range,
     load_monthly_stats,
@@ -40,13 +42,18 @@ def register(app):
         parts = (body.get("text") or "").strip().lower().split()
         summary_type = parts[0] if parts else ""
         preview = len(parts) == 2 and parts[1] == "preview"
-        if summary_type not in {"weekly", "monthly"} or len(parts) > 2 or (len(parts) == 2 and not preview):
+        this_month_preview = parts == ["this-month", "preview"]
+        valid_summary = summary_type in {"weekly", "monthly"} and (
+            len(parts) == 1 or preview
+        )
+        if not valid_summary and not this_month_preview:
             post_ephemeral(
                 client,
                 body,
                 (
                     "❌ 사용법: `/summary weekly`, `/summary monthly`, "
-                    "`/summary weekly preview`, `/summary monthly preview`"
+                    "`/summary weekly preview`, `/summary monthly preview`, "
+                    "`/summary this-month preview`"
                 ),
             )
             return
@@ -84,6 +91,11 @@ def _build_summary_text(summary_type):
             start_date, end_date = get_previous_week_range()
             stats = load_weekly_stats(conn, start_date, end_date)
             return build_weekly_summary(stats)
+
+        if summary_type == "this-month":
+            start_date, end_date = get_current_month_range()
+            stats = load_weekly_stats(conn, start_date, end_date)
+            return build_current_month_summary(stats)
 
         year, month = get_previous_month()
         stats = load_monthly_stats(conn, year, month)

@@ -22,6 +22,11 @@ def get_current_week_range(today=None):
     return start_date, today
 
 
+def get_current_month_range(today=None):
+    today = today or datetime.now(KST).date()
+    return date(today.year, today.month, 1), today
+
+
 def get_previous_month(today=None):
     today = today or datetime.now(KST).date()
     first_day_this_month = date(today.year, today.month, 1)
@@ -50,14 +55,19 @@ def build_monthly_summary(stats):
     return _build_summary(title, stats, "이번 달에는 첫 감사를 남겨보세요.")
 
 
+def build_current_month_summary(stats):
+    title = (
+        f"📊 {stats['end_date'].year}년 {stats['end_date'].month}월 "
+        "현재까지 Recognition 요약"
+    )
+    return _build_summary(title, stats, "이번 달에는 첫 감사가 없었습니다.")
+
+
 def _build_summary(title, stats, empty_message):
     lines = [
         title,
         "",
-        (
-            f"{RECOGNITION_EMOJI} 총 감사: {stats['total_recognitions']}건 "
-            f"| 참여자: {stats['participant_count']}명"
-        ),
+        _format_summary_intro(stats),
         "",
     ]
 
@@ -67,14 +77,21 @@ def _build_summary(title, stats, empty_message):
 
     lines.extend(
         [
-            "많이 받은 분",
+            "감사를 많이 받은 분",
             *_format_rankings(stats["top_receivers"]),
             "",
-            "많이 보낸 분",
+            "감사를 많이 전한 분",
             *_format_rankings(stats["top_senders"]),
         ]
     )
     return "\n".join(lines)
+
+
+def _format_summary_intro(stats):
+    return (
+        f"{RECOGNITION_EMOJI} 감사 메시지 {stats['total_recognitions']}건이 오갔고, "
+        f"{stats['participant_count']}명이 함께했습니다."
+    )
 
 
 def _format_rankings(rankings):

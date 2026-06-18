@@ -9,6 +9,9 @@ INVALID_FORMAT = "invalid_format"
 MISSING_MESSAGE = "missing_message"
 MULTIPLE_QUANTITY_METHODS = "수량은 이모지 또는 숫자 중 하나만 사용해주세요."
 BOT_RECEIVER = "봇에게는 보낼 수 없습니다."
+VARIATION_SELECTOR_16 = "\ufe0f"
+COFFEE_EMOJI = "☕"
+COFFEE_ALIAS = ":coffee:"
 
 
 class ParseError(Exception):
@@ -54,9 +57,16 @@ def split_leading_emoji_count(text):
         return 0, rest
 
     count = 0
-    while rest.startswith(RECOGNITION_EMOJI):
+    while True:
+        if rest.startswith(RECOGNITION_EMOJI):
+            rest = rest[len(RECOGNITION_EMOJI):]
+            if rest.startswith(VARIATION_SELECTOR_16):
+                rest = rest[len(VARIATION_SELECTOR_16):]
+        elif RECOGNITION_EMOJI == COFFEE_EMOJI and rest.startswith(COFFEE_ALIAS):
+            rest = rest[len(COFFEE_ALIAS):]
+        else:
+            break
         count += 1
-        rest = rest[len(RECOGNITION_EMOJI):]
 
     return count, rest.strip()
 

@@ -31,8 +31,36 @@ class RecognitionParsingTest(unittest.TestCase):
         self.assertEqual(request.unit_count, 2)
         self.assertEqual(request.message, "감사합니다")
 
+    def test_counts_emoji_with_variation_selector_after_mention(self):
+        request = parse_thanks_text("<@U1234> ☕️☕️ 감사합니다", "U9999")
+
+        self.assertEqual(request.receiver_id, "U1234")
+        self.assertEqual(request.unit_count, 2)
+        self.assertEqual(request.message, "감사합니다")
+
+    def test_counts_coffee_alias_after_mention(self):
+        request = parse_thanks_text("<@U1234> :coffee::coffee: 감사합니다", "U9999")
+
+        self.assertEqual(request.receiver_id, "U1234")
+        self.assertEqual(request.unit_count, 2)
+        self.assertEqual(request.message, "감사합니다")
+
     def test_counts_emoji_before_mention(self):
         request = parse_thanks_text("☕☕ <@U1234> 감사합니다", "U9999")
+
+        self.assertEqual(request.receiver_id, "U1234")
+        self.assertEqual(request.unit_count, 2)
+        self.assertEqual(request.message, "감사합니다")
+
+    def test_counts_coffee_alias_before_mention(self):
+        request = parse_thanks_text(":coffee::coffee: <@U1234> 감사합니다", "U9999")
+
+        self.assertEqual(request.receiver_id, "U1234")
+        self.assertEqual(request.unit_count, 2)
+        self.assertEqual(request.message, "감사합니다")
+
+    def test_counts_emoji_with_variation_selector_before_mention(self):
+        request = parse_thanks_text("☕️☕️ <@U1234> 감사합니다", "U9999")
 
         self.assertEqual(request.receiver_id, "U1234")
         self.assertEqual(request.unit_count, 2)
@@ -64,6 +92,18 @@ class RecognitionParsingTest(unittest.TestCase):
         self.assertEqual(request.unit_count, 3)
         self.assertEqual(request.message, "감사합니다")
 
+    def test_counts_three_joined_emoji_with_variation_selector_after_mention(self):
+        request = parse_thanks_text("<@U1234> ☕️☕️☕️ 감사합니다", "U9999")
+
+        self.assertEqual(request.unit_count, 3)
+        self.assertEqual(request.message, "감사합니다")
+
+    def test_counts_three_joined_coffee_alias_after_mention(self):
+        request = parse_thanks_text("<@U1234> :coffee::coffee::coffee: 감사합니다", "U9999")
+
+        self.assertEqual(request.unit_count, 3)
+        self.assertEqual(request.message, "감사합니다")
+
     def test_parser_counts_quantity_above_daily_limit(self):
         request = parse_thanks_text("<@U1234> ☕☕☕☕☕☕ 감사합니다", "U9999")
 
@@ -75,6 +115,12 @@ class RecognitionParsingTest(unittest.TestCase):
 
         self.assertEqual(request.unit_count, 1)
         self.assertEqual(request.message, "☕ 감사합니다")
+
+    def test_counts_only_joined_leading_coffee_alias_as_quantity(self):
+        request = parse_thanks_text("<@U1234> :coffee: :coffee: 감사합니다", "U9999")
+
+        self.assertEqual(request.unit_count, 1)
+        self.assertEqual(request.message, ":coffee: 감사합니다")
 
     def test_keeps_emoji_after_numeric_quantity_in_message(self):
         request = parse_thanks_text("<@U1234> 2 ☕ 감사합니다", "U9999")

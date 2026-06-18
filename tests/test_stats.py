@@ -9,7 +9,11 @@ os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test")
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
 os.environ.setdefault("FEED_CHANNEL_ID", "C123")
 
-from services.stats import get_current_week_range, get_previous_week_range  # noqa: E402
+from services.stats import (  # noqa: E402
+    get_current_month_range,
+    get_current_week_range,
+    get_previous_week_range,
+)
 import handlers.stats as summary_handler  # noqa: E402
 
 
@@ -59,6 +63,12 @@ class WeeklyRangeTest(unittest.TestCase):
 
         self.assertEqual(start_date, date(2026, 6, 1))
         self.assertEqual(end_date, date(2026, 6, 1))
+
+    def test_current_month_range_returns_month_to_date(self):
+        start_date, end_date = get_current_month_range(date(2026, 6, 18))
+
+        self.assertEqual(start_date, date(2026, 6, 1))
+        self.assertEqual(end_date, date(2026, 6, 18))
 
 
 class SummaryCommandTest(unittest.TestCase):
@@ -123,6 +133,43 @@ class SummaryCommandTest(unittest.TestCase):
         self.assertEqual(client.ephemeral_messages[0]["user"], "UADMIN")
         self.assertEqual(client.ephemeral_messages[0]["text"], "weekly summary")
 
+    def test_summary_this_month_preview_sends_ephemeral_without_posting_feed(self):
+        app = FakeApp()
+        client = FakeClient()
+        ack = Mock()
+        body = {"user_id": "UADMIN", "channel_id": "C123", "text": "this-month preview"}
+
+        summary_handler.register(app)
+        with patch.object(summary_handler, "ADMIN_USER_IDS", frozenset({"UADMIN"})), \
+            patch.object(summary_handler, "_build_summary_text", return_value="this month summary") as build_summary_text, \
+            patch.object(summary_handler, "post_summary") as post_summary:
+            app.commands["/summary"](ack, body, client)
+
+        ack.assert_called_once()
+        build_summary_text.assert_called_once_with("this-month")
+        post_summary.assert_not_called()
+        self.assertEqual(len(client.ephemeral_messages), 1)
+        self.assertEqual(client.ephemeral_messages[0]["user"], "UADMIN")
+        self.assertEqual(client.ephemeral_messages[0]["text"], "this month summary")
+
+    def test_summary_this_month_without_preview_shows_usage(self):
+        app = FakeApp()
+        client = FakeClient()
+        ack = Mock()
+        body = {"user_id": "UADMIN", "channel_id": "C123", "text": "this-month"}
+
+        summary_handler.register(app)
+        with patch.object(summary_handler, "ADMIN_USER_IDS", frozenset({"UADMIN"})), \
+            patch.object(summary_handler, "_build_summary_text") as build_summary_text, \
+            patch.object(summary_handler, "post_summary") as post_summary:
+            app.commands["/summary"](ack, body, client)
+
+        ack.assert_called_once()
+        build_summary_text.assert_not_called()
+        post_summary.assert_not_called()
+        self.assertEqual(len(client.ephemeral_messages), 1)
+        self.assertIn("this-month preview", client.ephemeral_messages[0]["text"])
+
     def test_manual_weekly_summary_uses_previous_week_range(self):
         conn = FakeConnection()
         stats = {"start_date": date(2026, 5, 25), "end_date": date(2026, 5, 31)}
@@ -143,6 +190,29 @@ class SummaryCommandTest(unittest.TestCase):
             conn,
             date(2026, 5, 25),
             date(2026, 5, 31),
+        )
+        self.assertTrue(conn.closed)
+
+    def test_this_month_summary_uses_current_month_range(self):
+        conn = FakeConnection()
+        stats = {"start_date": date(2026, 6, 1), "end_date": date(2026, 6, 18)}
+
+        with patch.object(summary_handler, "get_connection", return_value=conn), \
+            patch.object(
+                summary_handler,
+                "get_current_month_range",
+                return_value=(date(2026, 6, 1), date(2026, 6, 18)),
+            ) as get_current_month_range_mock, \
+            patch.object(summary_handler, "load_weekly_stats", return_value=stats) as load_weekly_stats, \
+            patch.object(summary_handler, "build_current_month_summary", return_value="this month summary"):
+            summary_text = summary_handler._build_summary_text("this-month")
+
+        self.assertEqual(summary_text, "this month summary")
+        get_current_month_range_mock.assert_called_once_with()
+        load_weekly_stats.assert_called_once_with(
+            conn,
+            date(2026, 6, 1),
+            date(2026, 6, 18),
         )
         self.assertTrue(conn.closed)
 
