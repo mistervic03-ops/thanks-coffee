@@ -8,18 +8,21 @@
 
 `handlers/thanks.py`가 `/thanks` command를 받으면 `ack()`를 즉시 호출한 뒤 service layer에 처리를 위임한다.
 
+`/thanks` 또는 `/thanks help`는 DB나 service layer를 호출하지 않고 일반 사용자용 도움말을 ephemeral message로 응답한다. 파싱할 수 없는 `/thanks` 입력도 raw parser 에러 대신 같은 도움말을 짧은 안내와 함께 보여준다.
+
 `/thanks status`는 감사 생성 대신 sender의 오늘 남은 수량과 누적 수신량을 ephemeral message로 응답한다.
 
 처리 순서:
 
-1. `services/recognition.py`에서 command text를 파싱한다.
-2. handler가 Slack `users.info`로 receiver가 봇 계정인지 확인하고, 봇이면 ephemeral 에러를 응답한다.
-3. Slack 요청에서 추출한 idempotency key로 중복 요청인지 먼저 확인한다.
-4. 중복이 아니면 sender의 daily limit을 확인한다.
-5. `recognition` 테이블에 감사 기록을 저장하고 commit한다.
-6. 중복 요청이 아니면 `services/feed.py`에서 feed 채널에 게시한다.
-7. feed 게시 결과를 `feed_post_status`와 feed message `ts`로 DB에 사후 업데이트한다.
-8. sender에게 ephemeral 성공 또는 에러 메시지를 보낸다.
+1. 도움말 또는 status 요청이면 해당 ephemeral message로 바로 응답한다.
+2. `services/recognition.py`에서 command text를 파싱한다.
+3. handler가 Slack `users.info`로 receiver가 봇 계정인지 확인하고, 봇이면 ephemeral 에러를 응답한다.
+4. Slack 요청에서 추출한 idempotency key로 중복 요청인지 먼저 확인한다.
+5. 중복이 아니면 sender의 daily limit을 확인한다.
+6. `recognition` 테이블에 감사 기록을 저장하고 commit한다.
+7. 중복 요청이 아니면 `services/feed.py`에서 feed 채널에 게시한다.
+8. feed 게시 결과를 `feed_post_status`와 feed message `ts`로 DB에 사후 업데이트한다.
+9. sender에게 ephemeral 성공 또는 에러 메시지를 보낸다.
 
 feed 게시 실패 시에도 이미 저장된 recognition 기록은 남는다.
 같은 idempotency key가 다시 들어오면 새 recognition을 만들지 않고 기존 결과를 반환하므로 daily limit도 추가 차감하지 않는다.
@@ -84,6 +87,7 @@ Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APSchedul
 
 `/summary weekly`, `/summary monthly`, `/summary weekly preview`, `/summary monthly preview`, `/summary this-month preview`는 `ADMIN_USER_IDS`에 포함된 Slack user만 실행할 수 있다.
 
+- `/summary` 또는 `/summary help`는 권한에 따라 ephemeral 도움말을 보여준다. 운영자는 실행 가능한 summary 명령어를 보고, 운영자가 아닌 사용자는 summary 명령어가 운영자 전용이라는 안내를 받는다.
 - 수동 주간 요약은 자동 weekly summary와 동일하게 직전 월요일부터 직전 일요일까지의 recognition을 집계한다.
 - 수동 월간 요약은 자동 monthly summary와 동일하게 직전 월의 recognition을 집계한다.
 - `preview`가 붙으면 feed 채널에 게시하지 않고 실행한 운영자에게 ephemeral message로만 보여준다.

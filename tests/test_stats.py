@@ -96,6 +96,65 @@ class SummaryCommandTest(unittest.TestCase):
         self.assertEqual(client.ephemeral_messages[0]["user"], "UOTHER")
         self.assertIn("권한", client.ephemeral_messages[0]["text"])
 
+    def test_summary_without_arguments_shows_admin_help_for_admin(self):
+        app = FakeApp()
+        client = FakeClient()
+        ack = Mock()
+        body = {"user_id": "UADMIN", "channel_id": "C123", "text": ""}
+
+        summary_handler.register(app)
+        with patch.object(summary_handler, "ADMIN_USER_IDS", frozenset({"UADMIN"})), \
+            patch.object(summary_handler, "_build_summary_text") as build_summary_text, \
+            patch.object(summary_handler, "post_summary") as post_summary:
+            app.commands["/summary"](ack, body, client)
+
+        ack.assert_called_once()
+        build_summary_text.assert_not_called()
+        post_summary.assert_not_called()
+        self.assertEqual(len(client.ephemeral_messages), 1)
+        self.assertIn("/summary weekly", client.ephemeral_messages[0]["text"])
+        self.assertIn("/summary monthly", client.ephemeral_messages[0]["text"])
+        self.assertIn("/summary weekly preview", client.ephemeral_messages[0]["text"])
+        self.assertIn("/summary monthly preview", client.ephemeral_messages[0]["text"])
+        self.assertIn("/summary this-month preview", client.ephemeral_messages[0]["text"])
+
+    def test_summary_help_shows_admin_help_for_admin(self):
+        app = FakeApp()
+        client = FakeClient()
+        ack = Mock()
+        body = {"user_id": "UADMIN", "channel_id": "C123", "text": "help"}
+
+        summary_handler.register(app)
+        with patch.object(summary_handler, "ADMIN_USER_IDS", frozenset({"UADMIN"})), \
+            patch.object(summary_handler, "_build_summary_text") as build_summary_text, \
+            patch.object(summary_handler, "post_summary") as post_summary:
+            app.commands["/summary"](ack, body, client)
+
+        ack.assert_called_once()
+        build_summary_text.assert_not_called()
+        post_summary.assert_not_called()
+        self.assertEqual(len(client.ephemeral_messages), 1)
+        self.assertIn("/summary weekly preview", client.ephemeral_messages[0]["text"])
+        self.assertIn("/summary monthly preview", client.ephemeral_messages[0]["text"])
+
+    def test_summary_without_arguments_tells_non_admin_admin_only(self):
+        app = FakeApp()
+        client = FakeClient()
+        ack = Mock()
+        body = {"user_id": "UOTHER", "channel_id": "C123", "text": ""}
+
+        summary_handler.register(app)
+        with patch.object(summary_handler, "ADMIN_USER_IDS", frozenset({"UADMIN"})), \
+            patch.object(summary_handler, "_build_summary_text") as build_summary_text, \
+            patch.object(summary_handler, "post_summary") as post_summary:
+            app.commands["/summary"](ack, body, client)
+
+        ack.assert_called_once()
+        build_summary_text.assert_not_called()
+        post_summary.assert_not_called()
+        self.assertEqual(len(client.ephemeral_messages), 1)
+        self.assertIn("운영자 권한", client.ephemeral_messages[0]["text"])
+
     def test_summary_preview_rejects_unauthorized_user(self):
         app = FakeApp()
         client = FakeClient()
@@ -113,6 +172,25 @@ class SummaryCommandTest(unittest.TestCase):
         post_summary.assert_not_called()
         self.assertEqual(len(client.ephemeral_messages), 1)
         self.assertIn("권한", client.ephemeral_messages[0]["text"])
+
+    def test_unknown_summary_usage_shows_admin_help(self):
+        app = FakeApp()
+        client = FakeClient()
+        ack = Mock()
+        body = {"user_id": "UADMIN", "channel_id": "C123", "text": "yesterday"}
+
+        summary_handler.register(app)
+        with patch.object(summary_handler, "ADMIN_USER_IDS", frozenset({"UADMIN"})), \
+            patch.object(summary_handler, "_build_summary_text") as build_summary_text, \
+            patch.object(summary_handler, "post_summary") as post_summary:
+            app.commands["/summary"](ack, body, client)
+
+        ack.assert_called_once()
+        build_summary_text.assert_not_called()
+        post_summary.assert_not_called()
+        self.assertEqual(len(client.ephemeral_messages), 1)
+        self.assertIn("요약 명령어를 다시 확인해주세요", client.ephemeral_messages[0]["text"])
+        self.assertIn("/summary weekly", client.ephemeral_messages[0]["text"])
 
     def test_summary_weekly_preview_sends_ephemeral_without_posting_feed(self):
         app = FakeApp()

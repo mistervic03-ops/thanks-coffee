@@ -47,7 +47,11 @@ def register(app):
 
         sender_id = body["user_id"]
         text = body.get("text", "")
-        if text.strip().lower() == "status":
+        normalized_text = text.strip().lower()
+        if not normalized_text or normalized_text == "help":
+            post_ephemeral(client, body, build_thanks_help())
+            return
+        if normalized_text == "status":
             handle_status(client, body, sender_id)
             return
 
@@ -58,15 +62,11 @@ def register(app):
             return
         except ParseError as exc:
             if exc.reason == MISSING_MESSAGE:
-                post_ephemeral(client, body, "❌ 감사 메시지를 함께 작성해주세요.")
+                post_ephemeral(client, body, build_thanks_help("감사 메시지도 함께 적어주세요."))
             elif exc.reason == INVALID_FORMAT:
-                post_ephemeral(
-                    client,
-                    body,
-                    "❌ 형식이 맞지 않아요. 예: `/thanks @팀원 감사합니다`",
-                )
+                post_ephemeral(client, body, build_thanks_help("형식을 다시 확인해주세요."))
             else:
-                post_ephemeral(client, body, f"❌ {exc.reason}")
+                post_ephemeral(client, body, build_thanks_help(exc.reason))
             return
 
         try:
@@ -192,6 +192,26 @@ def handle_status(client, body, user_id):
             f"📬 지금까지 받은 {RECOGNITION_UNIT}: {_format_count(total_received)}"
         ),
     )
+
+
+def build_thanks_help(prefix=None):
+    lines = []
+    if prefix:
+        lines.extend([f"❌ {prefix}", ""])
+
+    lines.extend(
+        [
+            f"{RECOGNITION_EMOJI} 모카에게 이렇게 부탁할 수 있어요.",
+            "`/thanks @user message`",
+            "`/thanks @user 3 message`",
+            f"`/thanks {RECOGNITION_EMOJI * 3} @user message`",
+            "`/thanks status`",
+            "",
+            f"하루에 보낼 수 있는 수량은 {_format_unit_count(DAILY_LIMIT)}까지예요.",
+            "이 안내 응답은 나에게만 보여요.",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _format_unit_count(unit_count):

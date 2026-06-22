@@ -35,11 +35,16 @@ def register(app):
     def handle_summary(ack, body, client):
         ack()
 
-        if not is_summary_admin(body["user_id"]):
-            post_ephemeral(client, body, "❌ 이 명령어를 실행할 권한이 없어요.")
+        parts = (body.get("text") or "").strip().lower().split()
+        is_admin = is_summary_admin(body["user_id"])
+        if not parts or parts == ["help"]:
+            post_ephemeral(client, body, build_summary_help(is_admin))
             return
 
-        parts = (body.get("text") or "").strip().lower().split()
+        if not is_admin:
+            post_ephemeral(client, body, build_summary_help(False))
+            return
+
         summary_type = parts[0] if parts else ""
         preview = len(parts) == 2 and parts[1] == "preview"
         this_month_preview = parts == ["this-month", "preview"]
@@ -47,15 +52,7 @@ def register(app):
             len(parts) == 1 or preview
         )
         if not valid_summary and not this_month_preview:
-            post_ephemeral(
-                client,
-                body,
-                (
-                    "❌ 사용법: `/summary weekly`, `/summary monthly`, "
-                    "`/summary weekly preview`, `/summary monthly preview`, "
-                    "`/summary this-month preview`"
-                ),
-            )
+            post_ephemeral(client, body, build_summary_help(True, "요약 명령어를 다시 확인해주세요."))
             return
 
         try:
@@ -82,6 +79,29 @@ def register(app):
                 body,
                 "✅ 모카 감사 요약을 만들었어요. FEED_ENABLED=false라 feed 채널에는 올리지 않았어요.",
             )
+
+
+def build_summary_help(is_admin, prefix=None):
+    if not is_admin:
+        return "❌ 모카 요약 명령어는 운영자 권한이 필요해요."
+
+    lines = []
+    if prefix:
+        lines.extend([f"❌ {prefix}", ""])
+
+    lines.extend(
+        [
+            "📊 모카 요약은 이렇게 볼 수 있어요.",
+            "`/summary weekly`",
+            "`/summary monthly`",
+            "`/summary weekly preview`",
+            "`/summary monthly preview`",
+            "`/summary this-month preview`",
+            "",
+            "`preview`는 feed에 올리지 않고 나에게만 보여줘요.",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _build_summary_text(summary_type):

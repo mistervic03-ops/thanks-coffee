@@ -17,6 +17,7 @@
 - `/thanks` slash command 방식으로 감사를 전달한다.
 - 수량은 이모지 반복(`☕☕☕`) 또는 숫자로 지정할 수 있다.
 - `/thanks status`로 잔여 수량과 누적 수신량을 조회한다.
+- `/thanks help`와 `/summary help`로 Slack 안에서 사용법을 확인할 수 있다.
 - feed 게시, 주간/월간 요약 게시, 기본 집계를 MVP 범위로 둔다.
 
 ## 5. V2 후순위 기능

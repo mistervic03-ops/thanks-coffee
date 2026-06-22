@@ -16,11 +16,11 @@ features:
   slash_commands:
     - command: /thanks
       description: 팀원에게 감사를 전합니다
-      usage_hint: "@팀원 [수량] 메시지 또는 status"
+      usage_hint: "@팀원 [수량] 메시지 또는 status/help"
       should_escape: true
     - command: /summary
       description: 모카 감사 요약을 feed 채널에 게시합니다
-      usage_hint: "weekly|monthly [preview] 또는 this-month preview"
+      usage_hint: "weekly|monthly [preview], this-month preview, help"
       should_escape: true
   bot_user:
     display_name: ☕ 모카
@@ -41,6 +41,8 @@ settings:
 Slash command 설정에서 **Escape channels, users, and links**를 반드시 켠다. `/thanks` parser는 Slack이 변환한 `<@USER_ID>` 형태의 mention payload를 사용한다. 이 설정이 꺼져 있으면 `@username` 형태가 들어와 `invalid_format`이 날 수 있다.
 
 `/thanks` 수량은 `/thanks @팀원 3 메시지`, `/thanks ☕☕☕ @팀원 메시지`, `/thanks @팀원 ☕☕☕ 메시지` 형식을 지원한다. 숫자 수량은 mention 뒤에만 둔다.
+
+`/thanks` 또는 `/thanks help`는 일반 사용자용 사용법을 ephemeral message로 보여준다. `/summary` 또는 `/summary help`는 운영자에게 요약 명령어 목록을 보여주고, 운영자가 아닌 사용자에게는 요약 명령어가 운영자 전용임을 안내한다.
 
 ## 3. Socket Mode 설정
 
