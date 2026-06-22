@@ -91,18 +91,23 @@ def build_home_view(remaining, received_recognitions, sent_recognitions):
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "🤝 고마운 순간을 놓치지 않도록 모카가 기록해둘게요.\n"
+                    "고마운 순간을 놓치지 않도록 모카가 기록해둘게요.\n"
                     "채널에서 `/thanks @user 메시지`로 바로 전할 수 있어요."
                 ),
             },
         },
+        {"type": "divider"},
         {
-            "type": "context",
-            "elements": [
+            "type": "section",
+            "fields": [
                 {
                     "type": "mrkdwn",
-                    "text": f"☕ 오늘 남은 수량: {RECOGNITION_UNIT} {_format_count(remaining)}",
-                }
+                    "text": "*오늘 남은 커피*",
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": f"`{_format_count(remaining)}`",
+                },
             ],
         },
         {"type": "divider"},
@@ -114,25 +119,14 @@ def build_home_view(remaining, received_recognitions, sent_recognitions):
 
     if received_recognitions:
         for recognition in received_recognitions:
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _format_received_recognition(recognition),
-                    },
-                }
-            )
+            blocks.extend(_build_received_recognition_blocks(recognition))
     else:
         blocks.append(
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": (
-                        f"아직 받은 감사 {RECOGNITION_UNIT}가 없어요.\n"
-                        "곧 따뜻한 마음이 도착할 거예요."
-                    ),
+                    "text": "> 아직 받은 감사가 없어요. 곧 따뜻한 마음이 도착할 거예요.",
                 },
             }
         )
@@ -149,25 +143,14 @@ def build_home_view(remaining, received_recognitions, sent_recognitions):
 
     if sent_recognitions:
         for recognition in sent_recognitions:
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _format_sent_recognition(recognition),
-                    },
-                }
-            )
+            blocks.extend(_build_sent_recognition_blocks(recognition))
     else:
         blocks.append(
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": (
-                        f"아직 보낸 감사 {RECOGNITION_UNIT}가 없어요.\n"
-                        "오늘 도움을 준 동료에게 가볍게 전해보세요."
-                    ),
+                    "text": "> 아직 보낸 감사가 없어요. 오늘 도움을 준 동료에게 전해보세요.",
                 },
             }
         )
@@ -181,20 +164,10 @@ def build_home_view(remaining, received_recognitions, sent_recognitions):
                     "type": "mrkdwn",
                     "text": (
                         "💡 *사용 예시*\n"
-                        "고마운 순간이 있으면 채널에서 `/thanks @user 메시지`로 전해보세요.\n\n"
                         "`/thanks @user 빠르게 도와줘서 고마워요`\n"
                         "`/thanks @user 3 큰 도움을 줘서 고마워요`"
                     ),
                 },
-            },
-            {
-                "type": "context",
-                "elements": [
-                    {
-                        "type": "mrkdwn",
-                        "text": "받은 감사, 보낸 감사, 오늘 남은 수량은 이 Home tab에서 확인할 수 있어요.",
-                    }
-                ],
             },
         ]
     )
@@ -202,19 +175,42 @@ def build_home_view(remaining, received_recognitions, sent_recognitions):
     return {"type": "home", "blocks": blocks}
 
 
-def _format_received_recognition(recognition):
-    return (
-        f"*{recognition['sender_name']}* · "
-        f"{_format_recognition_date(recognition['created_at'])} · "
-        f"{RECOGNITION_UNIT} {_format_count(recognition['unit_count'])}\n"
-        f"> {recognition['message']}"
-    )
+def _build_received_recognition_blocks(recognition):
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*{recognition['sender_name']}*님이 전했어요\n> {recognition['message']}",
+            },
+        },
+        _build_recognition_context(recognition),
+    ]
 
 
-def _format_sent_recognition(recognition):
-    return (
-        f"*{recognition['receiver_name']}*에게 · "
-        f"{_format_recognition_date(recognition['created_at'])} · "
-        f"{RECOGNITION_UNIT} {_format_count(recognition['unit_count'])}\n"
-        f"> {recognition['message']}"
-    )
+def _build_sent_recognition_blocks(recognition):
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*{recognition['receiver_name']}*님에게 보냈어요\n> {recognition['message']}",
+            },
+        },
+        _build_recognition_context(recognition),
+    ]
+
+
+def _build_recognition_context(recognition):
+    return {
+        "type": "context",
+        "elements": [
+            {
+                "type": "mrkdwn",
+                "text": (
+                    f"{_format_recognition_date(recognition['created_at'])} · "
+                    f"{RECOGNITION_UNIT} {_format_count(recognition['unit_count'])}"
+                ),
+            }
+        ],
+    }

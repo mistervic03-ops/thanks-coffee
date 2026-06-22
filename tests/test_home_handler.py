@@ -64,6 +64,14 @@ def block_texts(view, block_type):
     ]
 
 
+def field_texts(view):
+    return [
+        field["text"]
+        for block in view["blocks"]
+        for field in block.get("fields", [])
+    ]
+
+
 class HomeViewBuilderTest(unittest.TestCase):
     def test_build_home_view_keeps_messages_central(self):
         view = home_handler.build_home_view(
@@ -96,30 +104,22 @@ class HomeViewBuilderTest(unittest.TestCase):
             sum(1 for block in view["blocks"] if block["type"] == "divider"),
             3,
         )
-        self.assertIn(
-            "☕ 오늘 남은 수량: 커피 3잔",
-            [
-                element["text"]
-                for block in view["blocks"]
-                if block["type"] == "context"
-                for element in block["elements"]
-            ],
-        )
+        self.assertIn("*오늘 남은 커피*", field_texts(view))
+        self.assertIn("`3잔`", field_texts(view))
         self.assertIn("고마운 순간을 놓치지 않도록 모카가 기록해둘게요.", text)
         self.assertIn("채널에서 `/thanks @user 메시지`로 바로 전할 수 있어요.", text)
-        self.assertIn("☕ 오늘 남은 수량: 커피 3잔", text)
         self.assertIn("최근 받은 감사", text)
-        self.assertIn("민준", text)
+        self.assertIn("*민준*님이 전했어요", text)
         self.assertIn("2026-06-22", text)
         self.assertIn("도와줘서 고마워요", text)
         self.assertIn("최근 보낸 감사", text)
-        self.assertIn("서연", text)
+        self.assertIn("*서연*님에게 보냈어요", text)
         self.assertIn("큰 도움을 줘서 고마워요", text)
         self.assertLess(text.index("최근 받은 감사"), text.index("최근 보낸 감사"))
         self.assertIn("💡 *사용 예시*", text)
-        self.assertIn("고마운 순간이 있으면 채널에서 `/thanks @user 메시지`로 전해보세요.", text)
         self.assertIn("/thanks @user 빠르게 도와줘서 고마워요", text)
         self.assertIn("/thanks @user 3 큰 도움을 줘서 고마워요", text)
+        self.assertNotIn("받은 감사, 보낸 감사, 오늘 남은 수량", text)
         self.assertNotIn("/thanks status", text)
         self.assertNotIn("/thanks received", text)
         self.assertNotIn("leaderboard", text.lower())
@@ -136,11 +136,10 @@ class HomeViewBuilderTest(unittest.TestCase):
         )
 
         text = view_text(view)
-        self.assertIn("☕ 오늘 남은 수량: 커피 0잔", text)
-        self.assertIn("아직 받은 감사 커피가 없어요", text)
-        self.assertIn("따뜻한 마음", text)
-        self.assertIn("아직 보낸 감사 커피가 없어요", text)
-        self.assertIn("오늘 도움을 준 동료에게 가볍게 전해보세요", text)
+        self.assertIn("*오늘 남은 커피*", field_texts(view))
+        self.assertIn("`0잔`", field_texts(view))
+        self.assertIn("> 아직 받은 감사가 없어요. 곧 따뜻한 마음이 도착할 거예요.", text)
+        self.assertIn("> 아직 보낸 감사가 없어요. 오늘 도움을 준 동료에게 전해보세요.", text)
 
 
 class HomeEventHandlerTest(unittest.TestCase):
@@ -197,10 +196,11 @@ class HomeEventHandlerTest(unittest.TestCase):
         self.assertEqual(client.published_views[0]["user_id"], "U123")
 
         text = view_text(client.published_views[0]["view"])
-        self.assertIn("☕ 오늘 남은 수량: 커피 3잔", text)
-        self.assertIn("민준", text)
+        self.assertIn("*오늘 남은 커피*", field_texts(client.published_views[0]["view"]))
+        self.assertIn("`3잔`", field_texts(client.published_views[0]["view"]))
+        self.assertIn("*민준*님이 전했어요", text)
         self.assertIn("빠른 공유 감사합니다", text)
-        self.assertIn("서연", text)
+        self.assertIn("*서연*님에게 보냈어요", text)
         self.assertIn("큰 도움을 줘서 고마워요", text)
 
     def test_app_home_opened_ignores_non_home_tab(self):
