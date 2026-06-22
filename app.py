@@ -12,12 +12,14 @@ from config import (
     SLACK_BOT_TOKEN,
 )
 from db.queries import get_connection, init_db
+from handlers.home import register as register_home
 from handlers.thanks import register as register_thanks
 from handlers.stats import register as register_stats
 from scheduler import start_scheduler
 
 # Slack Bolt App
 bolt_app = App(token=SLACK_BOT_TOKEN)
+register_home(bolt_app)
 register_thanks(bolt_app)
 register_stats(bolt_app)
 

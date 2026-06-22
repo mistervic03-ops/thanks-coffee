@@ -1,10 +1,12 @@
 import logging
+from zoneinfo import ZoneInfo
 
 from slack_sdk.errors import SlackApiError
 
 from config import DAILY_LIMIT, FEED_CHANNEL_ID, RECOGNITION_EMOJI, RECOGNITION_UNIT
 from db.queries import (
     get_connection,
+    get_recent_received_recognitions,
     get_sent_today,
     get_total_received,
     update_feed_status,
@@ -24,6 +26,8 @@ from services.recognition import (
 
 
 logger = logging.getLogger(__name__)
+KST = ZoneInfo("Asia/Seoul")
+RECEIVED_LIMIT = 10
 
 
 def post_ephemeral(client, body, text):
@@ -53,6 +57,9 @@ def register(app):
             return
         if normalized_text == "status":
             handle_status(client, body, sender_id)
+            return
+        if normalized_text == "received":
+            handle_received(client, body, sender_id)
             return
 
         try:
@@ -194,6 +201,42 @@ def handle_status(client, body, user_id):
     )
 
 
+def handle_received(client, body, user_id):
+    conn = get_connection()
+    try:
+        recognitions = get_recent_received_recognitions(conn, user_id, RECEIVED_LIMIT)
+    finally:
+        conn.close()
+
+    post_ephemeral(client, body, build_received_text(client, recognitions))
+
+
+def build_received_text(client, recognitions):
+    if not recognitions:
+        return (
+            f"{RECOGNITION_EMOJI} 아직 받은 감사 {RECOGNITION_UNIT}가 없어요.\n"
+            "곧 따뜻한 마음이 도착할 거예요."
+        )
+
+    sender_names = {}
+    lines = [f"{RECOGNITION_EMOJI} 최근 받은 감사 {len(recognitions)}건이에요."]
+    for recognition in recognitions:
+        sender_id = recognition["sender_id"]
+        if sender_id not in sender_names:
+            sender_names[sender_id] = get_user_display_name(client, sender_id)
+
+        lines.append(
+            (
+                f"• {_format_recognition_date(recognition['created_at'])} · "
+                f"{sender_names[sender_id]} · "
+                f"{_format_unit_count(recognition['unit_count'])}\n"
+                f"  \"{recognition['message']}\""
+            )
+        )
+
+    return "\n".join(lines)
+
+
 def build_thanks_help(prefix=None):
     lines = []
     if prefix:
@@ -201,13 +244,12 @@ def build_thanks_help(prefix=None):
 
     lines.extend(
         [
-            f"{RECOGNITION_EMOJI} 모카에게 이렇게 부탁할 수 있어요.",
-            "`/thanks @user message`",
-            "`/thanks @user 3 message`",
-            f"`/thanks {RECOGNITION_EMOJI * 3} @user message`",
-            "`/thanks status`",
+            f"{RECOGNITION_EMOJI} 고마운 순간이 있으면 모카에게 이렇게 부탁해주세요.",
+            "`/thanks @user 빠르게 도와줘서 고마워요`",
+            "`/thanks @user 3 큰 도움을 줘서 고마워요`",
+            f"`/thanks {RECOGNITION_EMOJI * 3} @user 정말 고마워요`",
             "",
-            f"하루에 보낼 수 있는 수량은 {_format_unit_count(DAILY_LIMIT)}까지예요.",
+            f"받은 감사와 오늘 남은 수량은 모카 App Home에서 볼 수 있어요.",
             "이 안내 응답은 나에게만 보여요.",
         ]
     )
@@ -223,6 +265,30 @@ def _format_count(unit_count):
         return "한 잔"
 
     return f"{unit_count}잔"
+
+
+def _format_recognition_date(created_at):
+    if hasattr(created_at, "astimezone"):
+        created_at = created_at.astimezone(KST)
+
+    return created_at.strftime("%Y-%m-%d")
+
+
+def get_user_display_name(client, user_id):
+    try:
+        response = client.users_info(user=user_id)
+    except SlackApiError:
+        return f"<@{user_id}>"
+
+    user = response.get("user", {})
+    profile = user.get("profile", {})
+    return (
+        profile.get("display_name")
+        or profile.get("real_name")
+        or user.get("real_name")
+        or user.get("name")
+        or f"<@{user_id}>"
+    )
 
 
 def receiver_is_bot(client, receiver_id):

@@ -143,6 +143,52 @@ def get_total_received(conn, receiver_id):
         return cur.fetchone()[0]
 
 
+def get_recent_received_recognitions(conn, receiver_id, limit=10):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT sender_id, message, unit_count, created_at
+            FROM recognition
+            WHERE receiver_id = %s
+            ORDER BY created_at DESC, id DESC
+            LIMIT %s
+            """,
+            (receiver_id, limit),
+        )
+        return [
+            {
+                "sender_id": sender_id,
+                "message": message,
+                "unit_count": unit_count,
+                "created_at": created_at,
+            }
+            for sender_id, message, unit_count, created_at in cur.fetchall()
+        ]
+
+
+def get_recent_sent_recognitions(conn, sender_id, limit=10):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT receiver_id, message, unit_count, created_at
+            FROM recognition
+            WHERE sender_id = %s
+            ORDER BY created_at DESC, id DESC
+            LIMIT %s
+            """,
+            (sender_id, limit),
+        )
+        return [
+            {
+                "receiver_id": receiver_id,
+                "message": message,
+                "unit_count": unit_count,
+                "created_at": created_at,
+            }
+            for receiver_id, message, unit_count, created_at in cur.fetchall()
+        ]
+
+
 def update_feed_ts(conn, recognition_id, feed_channel_id, feed_message_ts):
     with conn.cursor() as cur:
         cur.execute(

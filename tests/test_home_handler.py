@@ -1,0 +1,197 @@
+import os
+import unittest
+from datetime import datetime, timezone
+from unittest.mock import patch
+
+
+os.environ.setdefault("SLACK_BOT_TOKEN", "xoxb-test")
+os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test")
+os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
+os.environ.setdefault("FEED_CHANNEL_ID", "C123")
+os.environ.setdefault("RECOGNITION_EMOJI", "☕")
+os.environ.setdefault("RECOGNITION_UNIT", "커피")
+
+import handlers.home as home_handler  # noqa: E402
+
+
+class FakeApp:
+    def __init__(self):
+        self.events = {}
+
+    def event(self, name):
+        def decorator(handler):
+            self.events[name] = handler
+            return handler
+
+        return decorator
+
+
+class FakeClient:
+    def __init__(self, users=None):
+        self.published_views = []
+        self.users = users or {}
+
+    def views_publish(self, **kwargs):
+        self.published_views.append(kwargs)
+
+    def users_info(self, user):
+        return {"user": self.users[user]}
+
+
+class FakeConnection:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+def view_text(view):
+    values = []
+    for block in view["blocks"]:
+        if "text" in block:
+            values.append(block["text"]["text"])
+        for element in block.get("elements", []):
+            values.append(element["text"])
+    return "\n".join(values)
+
+
+class HomeViewBuilderTest(unittest.TestCase):
+    def test_build_home_view_keeps_messages_central(self):
+        view = home_handler.build_home_view(
+            remaining=3,
+            received_recognitions=[
+                {
+                    "sender_name": "민준",
+                    "message": "도와줘서 고마워요",
+                    "unit_count": 2,
+                    "created_at": datetime(2026, 6, 21, 15, 30, tzinfo=timezone.utc),
+                }
+            ],
+            sent_recognitions=[
+                {
+                    "receiver_name": "서연",
+                    "message": "큰 도움을 줘서 고마워요",
+                    "unit_count": 3,
+                    "created_at": datetime(2026, 6, 20, 1, 0, tzinfo=timezone.utc),
+                }
+            ],
+        )
+
+        text = view_text(view)
+        self.assertEqual(view["type"], "home")
+        self.assertIn("고마운 순간을 놓치지 않도록 모카가 기록해둘게요.", text)
+        self.assertIn("채널에서 `/thanks @user 메시지`로 바로 전할 수 있어요.", text)
+        self.assertIn("오늘 남은 수량: 커피 3잔", text)
+        self.assertIn("최근 받은 감사", text)
+        self.assertIn("민준", text)
+        self.assertIn("2026-06-22", text)
+        self.assertIn("도와줘서 고마워요", text)
+        self.assertIn("최근 보낸 감사", text)
+        self.assertIn("서연", text)
+        self.assertIn("큰 도움을 줘서 고마워요", text)
+        self.assertLess(text.index("최근 받은 감사"), text.index("오늘 남은 수량"))
+        self.assertLess(text.index("최근 받은 감사"), text.index("최근 보낸 감사"))
+        self.assertIn("고마운 순간이 있으면 채널에서 `/thanks @user 메시지`로 전해보세요.", text)
+        self.assertIn("/thanks @user 빠르게 도와줘서 고마워요", text)
+        self.assertIn("/thanks @user 3 큰 도움을 줘서 고마워요", text)
+        self.assertNotIn("/thanks status", text)
+        self.assertNotIn("/thanks received", text)
+        self.assertNotIn("leaderboard", text.lower())
+        self.assertNotIn("badge", text.lower())
+        self.assertNotIn("ranking", text.lower())
+        self.assertNotIn("순위", text)
+        self.assertNotIn("랭킹", text)
+
+    def test_build_home_view_shows_received_empty_state(self):
+        view = home_handler.build_home_view(
+            remaining=0,
+            received_recognitions=[],
+            sent_recognitions=[],
+        )
+
+        text = view_text(view)
+        self.assertIn("오늘 남은 수량: 커피 0잔", text)
+        self.assertIn("아직 받은 감사 커피가 없어요", text)
+        self.assertIn("따뜻한 마음", text)
+        self.assertIn("아직 보낸 감사 커피가 없어요", text)
+        self.assertIn("오늘 도움을 준 동료에게 가볍게 전해보세요", text)
+
+
+class HomeEventHandlerTest(unittest.TestCase):
+    def test_app_home_opened_publishes_home_view(self):
+        app = FakeApp()
+        client = FakeClient(
+            users={
+                "U456": {"profile": {"display_name": "민준"}},
+                "U789": {"profile": {"display_name": "서연"}},
+            }
+        )
+        conn = FakeConnection()
+        received_recognitions = [
+            {
+                "sender_id": "U456",
+                "message": "빠른 공유 감사합니다",
+                "unit_count": 1,
+                "created_at": datetime(2026, 6, 20, 1, 0, tzinfo=timezone.utc),
+            }
+        ]
+        sent_recognitions = [
+            {
+                "receiver_id": "U789",
+                "message": "큰 도움을 줘서 고마워요",
+                "unit_count": 3,
+                "created_at": datetime(2026, 6, 19, 1, 0, tzinfo=timezone.utc),
+            }
+        ]
+
+        home_handler.register(app)
+        with patch.object(home_handler, "get_connection", return_value=conn) as get_connection, \
+            patch.object(home_handler, "get_sent_today", return_value=2) as get_sent_today, \
+            patch.object(
+                home_handler,
+                "get_recent_received_recognitions",
+                return_value=received_recognitions,
+            ) as get_recent_received_recognitions, \
+            patch.object(
+                home_handler,
+                "get_recent_sent_recognitions",
+                return_value=sent_recognitions,
+            ) as get_recent_sent_recognitions:
+            app.events["app_home_opened"](
+                {"type": "app_home_opened", "user": "U123", "tab": "home"},
+                client,
+            )
+
+        get_connection.assert_called_once()
+        get_sent_today.assert_called_once_with(conn, "U123")
+        get_recent_received_recognitions.assert_called_once_with(conn, "U123", 5)
+        get_recent_sent_recognitions.assert_called_once_with(conn, "U123", 5)
+        self.assertTrue(conn.closed)
+        self.assertEqual(len(client.published_views), 1)
+        self.assertEqual(client.published_views[0]["user_id"], "U123")
+
+        text = view_text(client.published_views[0]["view"])
+        self.assertIn("오늘 남은 수량: 커피 3잔", text)
+        self.assertIn("민준", text)
+        self.assertIn("빠른 공유 감사합니다", text)
+        self.assertIn("서연", text)
+        self.assertIn("큰 도움을 줘서 고마워요", text)
+
+    def test_app_home_opened_ignores_non_home_tab(self):
+        app = FakeApp()
+        client = FakeClient()
+
+        home_handler.register(app)
+        with patch.object(home_handler, "get_connection") as get_connection:
+            app.events["app_home_opened"](
+                {"type": "app_home_opened", "user": "U123", "tab": "messages"},
+                client,
+            )
+
+        get_connection.assert_not_called()
+        self.assertEqual(client.published_views, [])
+
+
+if __name__ == "__main__":
+    unittest.main()

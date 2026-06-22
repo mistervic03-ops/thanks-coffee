@@ -13,10 +13,13 @@ display_information:
   background_color: "#7C3AED"
 
 features:
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: false
   slash_commands:
     - command: /thanks
       description: 팀원에게 감사를 전합니다
-      usage_hint: "@팀원 [수량] 메시지 또는 status/help"
+      usage_hint: "@팀원 메시지"
       should_escape: true
     - command: /summary
       description: 모카 감사 요약을 feed 채널에 게시합니다
@@ -34,15 +37,20 @@ oauth_config:
       - users:read
 
 settings:
+  event_subscriptions:
+    bot_events:
+      - app_home_opened
   socket_mode_enabled: true
   token_rotation_enabled: false
 ```
 
 Slash command 설정에서 **Escape channels, users, and links**를 반드시 켠다. `/thanks` parser는 Slack이 변환한 `<@USER_ID>` 형태의 mention payload를 사용한다. 이 설정이 꺼져 있으면 `@username` 형태가 들어와 `invalid_format`이 날 수 있다.
 
-`/thanks` 수량은 `/thanks @팀원 3 메시지`, `/thanks ☕☕☕ @팀원 메시지`, `/thanks @팀원 ☕☕☕ 메시지` 형식을 지원한다. 숫자 수량은 mention 뒤에만 둔다.
+PoC 사용자 안내에서는 핵심 명령어를 `/thanks` 하나로 소개한다. 기본 감사 메시지, 숫자 수량, 이모지 수량 예시는 보여주되 별도 조회 명령어는 강조하지 않는다.
 
-`/thanks` 또는 `/thanks help`는 일반 사용자용 사용법을 ephemeral message로 보여준다. `/summary` 또는 `/summary help`는 운영자에게 요약 명령어 목록을 보여주고, 운영자가 아닌 사용자에게는 요약 명령어가 운영자 전용임을 안내한다.
+`/thanks` 또는 `/thanks help`는 일반 사용자용 핵심 사용법과 App Home 안내를 ephemeral message로 보여준다. `/thanks status`, `/thanks received`는 직접 입력 가능한 보조 조회 명령어로 유지하지만 일반 help에는 노출하지 않는다. `/summary` 또는 `/summary help`는 운영자에게 요약 명령어 목록을 보여주고, 운영자가 아닌 사용자에게는 요약 명령어가 운영자 전용임을 짧게 안내한다.
+
+App Home의 Home tab을 켜고 `app_home_opened` bot event를 구독한다. Home tab은 읽기 전용으로 오늘 남은 수량, 최근 받은 감사 메시지, 최근 보낸 감사 메시지, 짧은 사용 예시만 보여준다.
 
 ## 3. Socket Mode 설정
 

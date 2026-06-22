@@ -95,6 +95,7 @@ class SummaryCommandTest(unittest.TestCase):
         self.assertEqual(len(client.ephemeral_messages), 1)
         self.assertEqual(client.ephemeral_messages[0]["user"], "UOTHER")
         self.assertIn("권한", client.ephemeral_messages[0]["text"])
+        self.assertNotIn("/summary weekly", client.ephemeral_messages[0]["text"])
 
     def test_summary_without_arguments_shows_admin_help_for_admin(self):
         app = FakeApp()
@@ -154,6 +155,7 @@ class SummaryCommandTest(unittest.TestCase):
         post_summary.assert_not_called()
         self.assertEqual(len(client.ephemeral_messages), 1)
         self.assertIn("운영자 권한", client.ephemeral_messages[0]["text"])
+        self.assertNotIn("/summary weekly", client.ephemeral_messages[0]["text"])
 
     def test_summary_preview_rejects_unauthorized_user(self):
         app = FakeApp()

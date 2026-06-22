@@ -8,13 +8,17 @@
 
 `handlers/thanks.py`가 `/thanks` command를 받으면 `ack()`를 즉시 호출한 뒤 service layer에 처리를 위임한다.
 
-`/thanks` 또는 `/thanks help`는 DB나 service layer를 호출하지 않고 일반 사용자용 도움말을 ephemeral message로 응답한다. 파싱할 수 없는 `/thanks` 입력도 raw parser 에러 대신 같은 도움말을 짧은 안내와 함께 보여준다.
+`/thanks` 또는 `/thanks help`는 DB나 service layer를 호출하지 않고 일반 사용자용 도움말을 ephemeral message로 응답한다. 일반 help는 `/thanks` 중심의 감사 메시지 예시, 수량 지정 예시, App Home 안내를 보여주며 조회성 보조 명령어는 노출하지 않는다. 파싱할 수 없는 `/thanks` 입력도 raw parser 에러 대신 같은 도움말을 짧은 안내와 함께 보여준다.
 
 `/thanks status`는 감사 생성 대신 sender의 오늘 남은 수량과 누적 수신량을 ephemeral message로 응답한다.
 
+`/thanks received`는 감사 생성 대신 현재 사용자가 최근 받은 감사 기록 10건을 ephemeral message로 응답한다. sender 표시 이름은 Slack `users.info`로 가능한 경우에만 가져오며, 실패하면 mention으로 표시한다.
+
+`/thanks status`와 `/thanks received`는 직접 입력 가능한 보조 조회 명령어로 유지하지만 PoC 일반 사용자 안내에서는 숨긴다.
+
 처리 순서:
 
-1. 도움말 또는 status 요청이면 해당 ephemeral message로 바로 응답한다.
+1. 도움말, status, received 요청이면 해당 ephemeral message로 바로 응답한다.
 2. `services/recognition.py`에서 command text를 파싱한다.
 3. handler가 Slack `users.info`로 receiver가 봇 계정인지 확인하고, 봇이면 ephemeral 에러를 응답한다.
 4. Slack 요청에서 추출한 idempotency key로 중복 요청인지 먼저 확인한다.
@@ -42,7 +46,20 @@ Idempotency key 후보는 Socket Mode envelope id, Slack request id, `trigger_id
 
 `services/`는 recognition 저장, feed 게시, 통계 생성을 담당한다.
 
-## 4. DB 스키마
+## 4. App Home 처리 흐름
+
+`handlers/home.py`가 Slack `app_home_opened` event를 받으면 현재 사용자의 Home tab을 `views_publish`로 갱신한다.
+
+Home tab은 읽기 전용이며 다음 정보만 보여준다.
+
+- 오늘 보낼 수 있는 남은 수량
+- 최근 받은 감사 메시지
+- 최근 보낸 감사 메시지
+- 핵심 `/thanks` 사용 예시
+
+App Home은 `/thanks status`의 `get_sent_today`, `/thanks received`의 `get_recent_received_recognitions`, 최근 보낸 감사 조회용 `get_recent_sent_recognitions` query를 사용한다. leaderboard, badge, streak, reward, ranking 섹션은 만들지 않는다.
+
+## 5. DB 스키마
 
 `recognition` 테이블에 감사 기록과 feed 게시 메타데이터를 저장한다.
 
@@ -50,7 +67,7 @@ Idempotency key 후보는 Socket Mode envelope id, Slack request id, `trigger_id
 - `feed_post_status`: `pending`, `posted`, `failed`, `skipped` 중 하나로 feed 게시 상태를 추적한다.
 - `feed_posted_at`: feed 게시 성공 시각이다.
 
-## 5. Daily limit 계산 방식
+## 6. Daily limit 계산 방식
 
 - `recognition.unit_count` 합산 기준으로 계산한다.
 - 별도 daily limit 테이블은 두지 않는다.
@@ -60,7 +77,7 @@ Idempotency key 후보는 Socket Mode envelope id, Slack request id, `trigger_id
 - 이 lock은 새 counter table 없이 PoC 범위에서 limit race를 줄이기 위한 최소 보강이다.
 - 요청 `unit_count`가 남은 수량을 초과하면 저장하지 않고 ephemeral 에러를 보낸다.
 
-## 6. Feed posting 방식
+## 7. Feed posting 방식
 
 `services/feed.py`가 Slack feed 채널 게시를 전담한다.
 
@@ -70,7 +87,7 @@ Idempotency key 후보는 Socket Mode envelope id, Slack request id, `trigger_id
 - feed 게시에 성공하면 Slack message `ts`를 `recognition.feed_message_ts`에 저장하고 `feed_post_status`를 `posted`로 바꾼다.
 - feed 게시 실패는 `failed`, feed 비활성화는 `skipped`로 기록한다.
 
-## 7. Scheduler 동작 방식
+## 8. Scheduler 동작 방식
 
 Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APScheduler로 주간/월간 요약 게시를 예약한다. Scheduler가 꺼져 있어도 slash command 기반 `/summary weekly`, `/summary monthly` 흐름은 유지된다.
 
@@ -83,7 +100,7 @@ Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APSchedul
 - 요약 게시 실패나 Slack API 오류는 로그로 남기고 다음 스케줄 실행을 기다린다. 스케줄러 시작 실패도 Bolt 프로세스를 종료시키지 않는다.
 - Spark PoC에서는 기본값을 `SCHEDULER_ENABLED=false`로 둔다. 여러 프로세스에서 scheduler를 켜면 summary가 중복 게시될 수 있으며, 이번 PoC 범위에는 summary 분산락을 포함하지 않는다.
 
-## 8. 수동 요약 게시
+## 9. 수동 요약 게시
 
 `/summary weekly`, `/summary monthly`, `/summary weekly preview`, `/summary monthly preview`, `/summary this-month preview`는 `ADMIN_USER_IDS`에 포함된 Slack user만 실행할 수 있다.
 
