@@ -1,4 +1,5 @@
 import hashlib
+import os
 import psycopg2
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -14,15 +15,19 @@ def get_connection():
 
 
 def init_db():
-    """001_init.sql을 실행해 테이블을 생성한다."""
-    import os
-    migration_path = os.path.join(os.path.dirname(__file__), "migrations", "001_init.sql")
-    with open(migration_path, "r") as f:
-        sql = f.read()
+    """migrations 디렉터리의 SQL 파일을 이름순으로 실행한다."""
+    migration_dir = os.path.join(os.path.dirname(__file__), "migrations")
+    migration_paths = [
+        os.path.join(migration_dir, filename)
+        for filename in sorted(os.listdir(migration_dir))
+        if filename.endswith(".sql")
+    ]
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute(sql)
+            for migration_path in migration_paths:
+                with open(migration_path, "r") as f:
+                    cur.execute(f.read())
         conn.commit()
         print("DB initialized.")
     finally:
@@ -59,7 +64,44 @@ def _daily_limit_lock_key(sender_id, kst_date):
     return int.from_bytes(digest, byteorder="big", signed=True)
 
 
-def insert_recognition(conn, sender_id, receiver_id, message, unit_count, source_channel_id):
+def get_recognition_by_idempotency_key(conn, idempotency_key):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                receiver_id,
+                message,
+                unit_count,
+                feed_post_status
+            FROM recognition
+            WHERE idempotency_key = %s
+            """,
+            (idempotency_key,),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "id": row[0],
+        "receiver_id": row[1],
+        "message": row[2],
+        "unit_count": row[3],
+        "feed_post_status": row[4],
+    }
+
+
+def insert_recognition(
+    conn,
+    sender_id,
+    receiver_id,
+    message,
+    unit_count,
+    source_channel_id,
+    idempotency_key,
+):
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -68,14 +110,24 @@ def insert_recognition(conn, sender_id, receiver_id, message, unit_count, source
                 receiver_id,
                 message,
                 unit_count,
-                source_channel_id
+                source_channel_id,
+                idempotency_key
             )
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (idempotency_key) DO NOTHING
             RETURNING id
             """,
-            (sender_id, receiver_id, message, unit_count, source_channel_id),
+            (
+                sender_id,
+                receiver_id,
+                message,
+                unit_count,
+                source_channel_id,
+                idempotency_key,
+            ),
         )
-        return cur.fetchone()[0]
+        row = cur.fetchone()
+        return row[0] if row else None
 
 
 def get_total_received(conn, receiver_id):
@@ -97,10 +149,24 @@ def update_feed_ts(conn, recognition_id, feed_channel_id, feed_message_ts):
             """
             UPDATE recognition
             SET feed_channel_id = %s,
-                feed_message_ts = %s
+                feed_message_ts = %s,
+                feed_post_status = 'posted',
+                feed_posted_at = now()
             WHERE id = %s
             """,
             (feed_channel_id, feed_message_ts, recognition_id),
+        )
+
+
+def update_feed_status(conn, recognition_id, feed_post_status):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE recognition
+            SET feed_post_status = %s
+            WHERE id = %s
+            """,
+            (feed_post_status, recognition_id),
         )
 
 

@@ -1,11 +1,17 @@
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import logging
 import threading
 
-from config import HEALTH_CHECK_ENABLED, SCHEDULER_ENABLED, SLACK_BOT_TOKEN, SLACK_APP_TOKEN
-from db.queries import init_db
+from config import (
+    HEALTH_CHECK_ENABLED,
+    HEALTH_CHECK_PORT,
+    SCHEDULER_ENABLED,
+    SLACK_APP_TOKEN,
+    SLACK_BOT_TOKEN,
+)
+from db.queries import get_connection, init_db
 from handlers.thanks import register as register_thanks
 from handlers.stats import register as register_stats
 from scheduler import start_scheduler
@@ -24,9 +30,26 @@ def health():
     return {"status": "ok"}
 
 
+@api.get("/ready")
+def ready():
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="db_unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+
+    return {"status": "ready"}
+
+
 def run_fastapi():
     import uvicorn
-    uvicorn.run(api, host="0.0.0.0", port=8000)
+    uvicorn.run(api, host="0.0.0.0", port=HEALTH_CHECK_PORT)
 
 
 if __name__ == "__main__":

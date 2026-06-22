@@ -31,6 +31,7 @@ FEED_CHANNEL_ID: str = os.getenv("FEED_CHANNEL_ID", "")
 ADMIN_USER_IDS: frozenset[str] = parse_admin_user_ids(os.getenv("ADMIN_USER_IDS", ""))
 SCHEDULER_ENABLED: bool = parse_enabled_flag(os.getenv("SCHEDULER_ENABLED", "false"))
 HEALTH_CHECK_ENABLED: bool = parse_enabled_flag(os.getenv("HEALTH_CHECK_ENABLED", "false"))
+HEALTH_CHECK_PORT: int = int(os.getenv("HEALTH_CHECK_PORT", "8000"))
 
 validate_feed_config(FEED_ENABLED, FEED_CHANNEL_ID)
 

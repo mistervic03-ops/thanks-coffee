@@ -7,7 +7,12 @@ os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test")
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
 os.environ.setdefault("FEED_CHANNEL_ID", "C123")
 
-from config import parse_admin_user_ids, parse_enabled_flag, validate_feed_config  # noqa: E402
+from config import (  # noqa: E402
+    HEALTH_CHECK_PORT,
+    parse_admin_user_ids,
+    parse_enabled_flag,
+    validate_feed_config,
+)
 
 
 class ConfigTest(unittest.TestCase):
@@ -28,6 +33,9 @@ class ConfigTest(unittest.TestCase):
         self.assertTrue(parse_enabled_flag("true"))
         self.assertFalse(parse_enabled_flag("false"))
         self.assertFalse(parse_enabled_flag(""))
+
+    def test_health_check_port_defaults_to_8000(self):
+        self.assertEqual(HEALTH_CHECK_PORT, 8000)
 
 
 if __name__ == "__main__":

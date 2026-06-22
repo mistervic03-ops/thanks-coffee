@@ -144,6 +144,10 @@ class RecognitionCreationTest(unittest.TestCase):
             message="감사합니다",
         )
 
+        def get_recognition_by_idempotency_key(conn, idempotency_key):
+            call_order.append("get_existing")
+            return None
+
         def lock_daily_limit(conn, sender_id):
             call_order.append("lock")
 
@@ -151,7 +155,12 @@ class RecognitionCreationTest(unittest.TestCase):
             call_order.append("get_sent_today")
             return 0
 
-        with patch.object(recognition_service, "lock_daily_limit", side_effect=lock_daily_limit), \
+        with patch.object(
+            recognition_service,
+            "get_recognition_by_idempotency_key",
+            side_effect=get_recognition_by_idempotency_key,
+        ), \
+            patch.object(recognition_service, "lock_daily_limit", side_effect=lock_daily_limit), \
             patch.object(recognition_service, "get_sent_today", side_effect=get_sent_today), \
             patch.object(recognition_service, "insert_recognition", return_value=42), \
             patch.object(recognition_service, "get_total_received", return_value=1):
@@ -160,9 +169,10 @@ class RecognitionCreationTest(unittest.TestCase):
                 sender_id="U9999",
                 request=request,
                 source_channel_id="C123",
+                idempotency_key="/thanks:trigger:abc",
             )
 
-        self.assertEqual(call_order, ["lock", "get_sent_today"])
+        self.assertEqual(call_order, ["get_existing", "lock", "get_existing", "get_sent_today"])
 
     def test_does_not_insert_when_daily_limit_is_exceeded(self):
         request = RecognitionRequest(
@@ -171,7 +181,8 @@ class RecognitionCreationTest(unittest.TestCase):
             message="감사합니다",
         )
 
-        with patch.object(recognition_service, "lock_daily_limit"), \
+        with patch.object(recognition_service, "get_recognition_by_idempotency_key", return_value=None), \
+            patch.object(recognition_service, "lock_daily_limit"), \
             patch.object(recognition_service, "get_sent_today", return_value=4), \
             patch.object(recognition_service, "insert_recognition") as insert_recognition:
             with self.assertRaises(LimitError) as ctx:
@@ -180,6 +191,7 @@ class RecognitionCreationTest(unittest.TestCase):
                     sender_id="U9999",
                     request=request,
                     source_channel_id="C123",
+                    idempotency_key="/thanks:trigger:abc",
                 )
 
         self.assertEqual(ctx.exception.remaining, 1)
@@ -193,7 +205,8 @@ class RecognitionCreationTest(unittest.TestCase):
             message="감사합니다",
         )
 
-        with patch.object(recognition_service, "lock_daily_limit"), \
+        with patch.object(recognition_service, "get_recognition_by_idempotency_key", return_value=None), \
+            patch.object(recognition_service, "lock_daily_limit"), \
             patch.object(recognition_service, "get_sent_today", return_value=1), \
             patch.object(recognition_service, "insert_recognition", return_value=42) as insert_recognition, \
             patch.object(recognition_service, "get_total_received", return_value=7):
@@ -202,6 +215,7 @@ class RecognitionCreationTest(unittest.TestCase):
                 sender_id="U9999",
                 request=request,
                 source_channel_id="C123",
+                idempotency_key="/thanks:trigger:abc",
             )
 
         insert_recognition.assert_called_once()
@@ -211,6 +225,118 @@ class RecognitionCreationTest(unittest.TestCase):
         self.assertEqual(result.message, "감사합니다")
         self.assertEqual(result.remaining, 2)
         self.assertEqual(result.total_received, 7)
+
+    def test_same_idempotency_key_inserts_only_once(self):
+        request = RecognitionRequest(
+            receiver_id="U1234",
+            unit_count=2,
+            message="감사합니다",
+        )
+        inserted = []
+
+        def get_recognition_by_idempotency_key(conn, idempotency_key):
+            if inserted:
+                return {
+                    "id": 42,
+                    "receiver_id": "U1234",
+                    "message": "감사합니다",
+                    "unit_count": 2,
+                    "feed_post_status": "posted",
+                }
+            return None
+
+        def insert_recognition(**kwargs):
+            inserted.append(kwargs)
+            return 42
+
+        def get_sent_today(conn, sender_id):
+            return sum(row["unit_count"] for row in inserted)
+
+        with patch.object(
+            recognition_service,
+            "get_recognition_by_idempotency_key",
+            side_effect=get_recognition_by_idempotency_key,
+        ), \
+            patch.object(recognition_service, "lock_daily_limit"), \
+            patch.object(recognition_service, "get_sent_today", side_effect=get_sent_today), \
+            patch.object(recognition_service, "insert_recognition", side_effect=insert_recognition) as insert_mock, \
+            patch.object(recognition_service, "get_total_received", return_value=2):
+            first = create_recognition(
+                conn=object(),
+                sender_id="U9999",
+                request=request,
+                source_channel_id="C123",
+                idempotency_key="/thanks:trigger:abc",
+            )
+            second = create_recognition(
+                conn=object(),
+                sender_id="U9999",
+                request=request,
+                source_channel_id="C123",
+                idempotency_key="/thanks:trigger:abc",
+            )
+
+        self.assertFalse(first.is_duplicate)
+        self.assertTrue(second.is_duplicate)
+        self.assertEqual(first.recognition_id, second.recognition_id)
+        self.assertEqual(insert_mock.call_count, 1)
+        self.assertEqual(len(inserted), 1)
+
+    def test_duplicate_request_does_not_consume_daily_limit_again(self):
+        request = RecognitionRequest(
+            receiver_id="U1234",
+            unit_count=5,
+            message="감사합니다",
+        )
+        inserted = []
+
+        def get_recognition_by_idempotency_key(conn, idempotency_key):
+            if inserted:
+                return {
+                    "id": 42,
+                    "receiver_id": "U1234",
+                    "message": "감사합니다",
+                    "unit_count": 5,
+                    "feed_post_status": "posted",
+                }
+            return None
+
+        def insert_recognition(**kwargs):
+            inserted.append(kwargs)
+            return 42
+
+        def get_sent_today(conn, sender_id):
+            return sum(row["unit_count"] for row in inserted)
+
+        with patch.object(recognition_service, "DAILY_LIMIT", 5), \
+            patch.object(
+                recognition_service,
+                "get_recognition_by_idempotency_key",
+                side_effect=get_recognition_by_idempotency_key,
+            ), \
+            patch.object(recognition_service, "lock_daily_limit"), \
+            patch.object(recognition_service, "get_sent_today", side_effect=get_sent_today), \
+            patch.object(recognition_service, "insert_recognition", side_effect=insert_recognition) as insert_mock, \
+            patch.object(recognition_service, "get_total_received", return_value=5):
+            first = create_recognition(
+                conn=object(),
+                sender_id="U9999",
+                request=request,
+                source_channel_id="C123",
+                idempotency_key="/thanks:trigger:abc",
+            )
+            second = create_recognition(
+                conn=object(),
+                sender_id="U9999",
+                request=request,
+                source_channel_id="C123",
+                idempotency_key="/thanks:trigger:abc",
+            )
+
+        self.assertEqual(first.remaining, 0)
+        self.assertEqual(second.remaining, 0)
+        self.assertTrue(second.is_duplicate)
+        self.assertEqual(insert_mock.call_count, 1)
 
 
 class DailyLimitLockKeyTest(unittest.TestCase):

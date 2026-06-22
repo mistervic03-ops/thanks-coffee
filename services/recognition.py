@@ -2,7 +2,13 @@ import re
 from dataclasses import dataclass
 
 from config import DAILY_LIMIT, RECOGNITION_EMOJI
-from db.queries import get_sent_today, get_total_received, insert_recognition, lock_daily_limit
+from db.queries import (
+    get_recognition_by_idempotency_key,
+    get_sent_today,
+    get_total_received,
+    insert_recognition,
+    lock_daily_limit,
+)
 
 
 INVALID_FORMAT = "invalid_format"
@@ -46,6 +52,7 @@ class RecognitionResult:
     message: str
     remaining: int
     total_received: int
+    is_duplicate: bool = False
 
 
 MENTION_RE = re.compile(r"^\s*<@([A-Z0-9]+)(?:\|[^>]+)?>\s*(.*)$")
@@ -113,8 +120,16 @@ def parse_thanks_text(text, sender_id):
 parse_thanks = parse_thanks_text
 
 
-def create_recognition(conn, sender_id, request, source_channel_id):
+def create_recognition(conn, sender_id, request, source_channel_id, idempotency_key):
+    existing = get_recognition_by_idempotency_key(conn, idempotency_key)
+    if existing:
+        return _build_duplicate_result(conn, sender_id, existing)
+
     lock_daily_limit(conn, sender_id)
+    existing = get_recognition_by_idempotency_key(conn, idempotency_key)
+    if existing:
+        return _build_duplicate_result(conn, sender_id, existing)
+
     sent_today = get_sent_today(conn, sender_id)
     remaining = max(DAILY_LIMIT - sent_today, 0)
     if request.unit_count > remaining:
@@ -127,7 +142,12 @@ def create_recognition(conn, sender_id, request, source_channel_id):
         message=request.message,
         unit_count=request.unit_count,
         source_channel_id=source_channel_id,
+        idempotency_key=idempotency_key,
     )
+    if recognition_id is None:
+        existing = get_recognition_by_idempotency_key(conn, idempotency_key)
+        return _build_duplicate_result(conn, sender_id, existing)
+
     total_received = get_total_received(conn, request.receiver_id)
 
     return RecognitionResult(
@@ -137,4 +157,18 @@ def create_recognition(conn, sender_id, request, source_channel_id):
         message=request.message,
         remaining=remaining - request.unit_count,
         total_received=total_received,
+    )
+
+
+def _build_duplicate_result(conn, sender_id, existing):
+    sent_today = get_sent_today(conn, sender_id)
+    total_received = get_total_received(conn, existing["receiver_id"])
+    return RecognitionResult(
+        recognition_id=existing["id"],
+        receiver_id=existing["receiver_id"],
+        unit_count=existing["unit_count"],
+        message=existing["message"],
+        remaining=max(DAILY_LIMIT - sent_today, 0),
+        total_received=total_received,
+        is_duplicate=True,
     )

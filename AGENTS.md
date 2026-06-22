@@ -89,8 +89,8 @@
 
 ## 6. Slack manifest commands
 
-- `/thanks`: 팀원에게 감사를 전하거나 내 상태를 조회한다. 예: `/thanks @팀원 감사합니다`, `/thanks @팀원 3 감사합니다`, `/thanks ☕☕☕ @팀원 감사합니다`, `/thanks status`
-- `/summary`: 운영자가 `weekly` 또는 `monthly` 요약을 feed 채널에 게시한다.
+- `/thanks`: 팀원에게 감사를 전하거나 내 상태를 조회한다. 예: `/thanks @팀원 감사합니다`, `/thanks @팀원 3 감사합니다`, `/thanks ☕☕☕ @팀원 감사합니다`, `/thanks @팀원 ☕☕☕ 감사합니다`, `/thanks status`
+- `/summary`: 운영자가 `weekly` 또는 `monthly` 요약을 feed 채널에 게시한다. `weekly preview`, `monthly preview`, `this-month preview`는 feed에 게시하지 않고 운영자에게만 보여준다.
 
 ## 7. 문서 업데이트 규칙
 

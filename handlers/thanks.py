@@ -1,7 +1,15 @@
+import logging
+
 from slack_sdk.errors import SlackApiError
 
 from config import DAILY_LIMIT, FEED_CHANNEL_ID, RECOGNITION_EMOJI, RECOGNITION_UNIT
-from db.queries import get_connection, get_sent_today, get_total_received, update_feed_ts
+from db.queries import (
+    get_connection,
+    get_sent_today,
+    get_total_received,
+    update_feed_status,
+    update_feed_ts,
+)
 from services.feed import post_to_feed
 from services.recognition import (
     BOT_RECEIVER,
@@ -13,6 +21,9 @@ from services.recognition import (
     create_recognition,
     parse_thanks_text,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def post_ephemeral(client, body, text):
@@ -31,7 +42,7 @@ def post_ephemeral(client, body, text):
 
 def register(app):
     @app.command("/thanks")
-    def handle_thanks(ack, body, client):
+    def handle_thanks(ack, body, client, context=None):
         ack()
 
         sender_id = body["user_id"]
@@ -73,6 +84,16 @@ def register(app):
             )
             return
 
+        idempotency_key = extract_idempotency_key(body, context)
+        if not idempotency_key:
+            logger.error("Failed to extract idempotency key for /thanks body=%s", _safe_body(body))
+            post_ephemeral(
+                client,
+                body,
+                "❌ 요청을 안전하게 식별할 수 없어요. 잠시 후 다시 시도해주세요.",
+            )
+            return
+
         conn = get_connection()
         try:
             try:
@@ -81,6 +102,7 @@ def register(app):
                     sender_id=sender_id,
                     request=request,
                     source_channel_id=body["channel_id"],
+                    idempotency_key=idempotency_key,
                 )
                 conn.commit()
             except LimitError as exc:
@@ -95,24 +117,48 @@ def register(app):
                 )
                 return
 
-            try:
-                feed_message_ts = post_to_feed(client, sender_id, result)
-                if feed_message_ts:
-                    update_feed_ts(
-                        conn=conn,
-                        recognition_id=result.recognition_id,
-                        feed_channel_id=FEED_CHANNEL_ID,
-                        feed_message_ts=feed_message_ts,
-                    )
+            if not result.is_duplicate:
+                feed_message_ts = None
+                try:
+                    feed_message_ts = post_to_feed(client, sender_id, result)
+                    if feed_message_ts:
+                        update_feed_ts(
+                            conn=conn,
+                            recognition_id=result.recognition_id,
+                            feed_channel_id=FEED_CHANNEL_ID,
+                            feed_message_ts=feed_message_ts,
+                        )
+                    else:
+                        update_feed_status(conn, result.recognition_id, "skipped")
                     conn.commit()
-            except Exception:
-                conn.rollback()
-                post_ephemeral(
-                    client,
-                    body,
-                    "✅ 감사는 기록됐지만 feed 채널에는 올리지 못했어요.",
-                )
-                return
+                except Exception:
+                    conn.rollback()
+                    try:
+                        update_feed_status(conn, result.recognition_id, "failed")
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+                        logger.exception(
+                            "Failed to record feed failure for recognition_id=%s",
+                            result.recognition_id,
+                        )
+
+                    logger.exception(
+                        (
+                            "Failed to post/update feed for recognition_id=%s "
+                            "idempotency_key=%s feed_channel_id=%s feed_message_ts=%s"
+                        ),
+                        result.recognition_id,
+                        idempotency_key,
+                        FEED_CHANNEL_ID,
+                        feed_message_ts,
+                    )
+                    post_ephemeral(
+                        client,
+                        body,
+                        "✅ 감사는 기록됐지만 feed 채널에는 올리지 못했어요.",
+                    )
+                    return
 
         finally:
             conn.close()
@@ -163,3 +209,39 @@ def receiver_is_bot(client, receiver_id):
     response = client.users_info(user=receiver_id)
     user = response["user"]
     return bool(user.get("is_bot"))
+
+
+def extract_idempotency_key(body, context=None):
+    context = context or {}
+    for source, value in (
+        ("socket_envelope", _get_context_value(context, "envelope_id")),
+        ("socket_envelope", body.get("envelope_id")),
+        ("slack_request", _get_context_value(context, "request_id")),
+        ("slack_request", body.get("request_id")),
+        ("trigger", body.get("trigger_id")),
+        ("response_url", body.get("response_url")),
+    ):
+        if value:
+            return f"/thanks:{source}:{value}"
+
+    return None
+
+
+def _get_context_value(context, key):
+    if hasattr(context, "get"):
+        return context.get(key)
+    return None
+
+
+def _safe_body(body):
+    return {
+        key: body.get(key)
+        for key in (
+            "team_id",
+            "channel_id",
+            "user_id",
+            "command",
+            "text",
+            "trigger_id",
+        )
+    }

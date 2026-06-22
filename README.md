@@ -22,8 +22,9 @@ python app.py
 
 Optional operations flags default to `false`, so the PoC runs Slack-command first unless explicitly enabled.
 
-Set `HEALTH_CHECK_ENABLED=true` to enable the local health check server.
+Set `HEALTH_CHECK_ENABLED=true` to enable the local health check server. `/health` checks process liveness and `/ready` checks DB connectivity. The default port is `8000`; set `HEALTH_CHECK_PORT=8020` on Spark to avoid existing services.
 
 ```bash
 curl http://localhost:8000/health
+curl http://localhost:8000/ready
 ```
