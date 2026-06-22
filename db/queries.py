@@ -189,6 +189,58 @@ def get_recent_sent_recognitions(conn, sender_id, limit=10):
         ]
 
 
+def get_personal_recognition_summary(conn, user_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                COALESCE(SUM(unit_count) FILTER (
+                    WHERE receiver_id = %s
+                      AND (created_at AT TIME ZONE 'Asia/Seoul')::date
+                          BETWEEN date_trunc('week', now() AT TIME ZONE 'Asia/Seoul')::date
+                          AND (now() AT TIME ZONE 'Asia/Seoul')::date
+                ), 0) AS received_week,
+                COALESCE(SUM(unit_count) FILTER (
+                    WHERE receiver_id = %s
+                      AND (created_at AT TIME ZONE 'Asia/Seoul')::date
+                          BETWEEN date_trunc('month', now() AT TIME ZONE 'Asia/Seoul')::date
+                          AND (now() AT TIME ZONE 'Asia/Seoul')::date
+                ), 0) AS received_month,
+                COALESCE(SUM(unit_count) FILTER (
+                    WHERE receiver_id = %s
+                ), 0) AS received_total,
+                COALESCE(SUM(unit_count) FILTER (
+                    WHERE sender_id = %s
+                      AND (created_at AT TIME ZONE 'Asia/Seoul')::date
+                          BETWEEN date_trunc('week', now() AT TIME ZONE 'Asia/Seoul')::date
+                          AND (now() AT TIME ZONE 'Asia/Seoul')::date
+                ), 0) AS sent_week,
+                COALESCE(SUM(unit_count) FILTER (
+                    WHERE sender_id = %s
+                      AND (created_at AT TIME ZONE 'Asia/Seoul')::date
+                          BETWEEN date_trunc('month', now() AT TIME ZONE 'Asia/Seoul')::date
+                          AND (now() AT TIME ZONE 'Asia/Seoul')::date
+                ), 0) AS sent_month,
+                COALESCE(SUM(unit_count) FILTER (
+                    WHERE sender_id = %s
+                ), 0) AS sent_total
+            FROM recognition
+            WHERE sender_id = %s OR receiver_id = %s
+            """,
+            (user_id, user_id, user_id, user_id, user_id, user_id, user_id, user_id),
+        )
+        row = cur.fetchone()
+
+    return {
+        "received_week": row[0],
+        "received_month": row[1],
+        "received_total": row[2],
+        "sent_week": row[3],
+        "sent_month": row[4],
+        "sent_total": row[5],
+    }
+
+
 def update_feed_ts(conn, recognition_id, feed_channel_id, feed_message_ts):
     with conn.cursor() as cur:
         cur.execute(

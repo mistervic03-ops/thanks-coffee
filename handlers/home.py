@@ -3,6 +3,7 @@ import logging
 from config import DAILY_LIMIT, RECOGNITION_EMOJI, RECOGNITION_UNIT
 from db.queries import (
     get_connection,
+    get_personal_recognition_summary,
     get_recent_received_recognitions,
     get_recent_sent_recognitions,
     get_sent_today,
@@ -37,6 +38,7 @@ def build_home_view_for_user(client, user_id):
     conn = get_connection()
     try:
         sent_today = get_sent_today(conn, user_id)
+        summary = get_personal_recognition_summary(conn, user_id)
         received_recognitions = get_recent_received_recognitions(
             conn,
             user_id,
@@ -49,6 +51,7 @@ def build_home_view_for_user(client, user_id):
     remaining = max(DAILY_LIMIT - sent_today, 0)
     return build_home_view(
         remaining=remaining,
+        summary=summary,
         received_recognitions=with_sender_names(client, received_recognitions),
         sent_recognitions=with_receiver_names(client, sent_recognitions),
     )
@@ -80,7 +83,7 @@ def with_user_names(client, recognitions, source_key, target_key):
     return decorated
 
 
-def build_home_view(remaining, received_recognitions, sent_recognitions):
+def build_home_view(remaining, summary, received_recognitions, sent_recognitions):
     blocks = [
         {
             "type": "header",
@@ -113,7 +116,25 @@ def build_home_view(remaining, received_recognitions, sent_recognitions):
         {"type": "divider"},
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": "🤝 최근 받은 감사"},
+            "text": {"type": "plain_text", "text": "나의 커피 요약"},
+        },
+        {
+            "type": "section",
+            "fields": _build_summary_fields(summary),
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "내가 주고받은 감사 흐름을 조용히 돌아보는 용도예요.",
+                }
+            ],
+        },
+        {"type": "divider"},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "최근 받은 감사"},
         },
     ]
 
@@ -136,7 +157,7 @@ def build_home_view(remaining, received_recognitions, sent_recognitions):
             {"type": "divider"},
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": "🤝 최근 보낸 감사"},
+                "text": {"type": "plain_text", "text": "최근 보낸 감사"},
             },
         ]
     )
@@ -198,6 +219,29 @@ def _build_sent_recognition_blocks(recognition):
             },
         },
         _build_recognition_context(recognition),
+    ]
+
+
+def _build_summary_fields(summary):
+    return [
+        {
+            "type": "mrkdwn",
+            "text": (
+                "*받은 커피*\n"
+                f"이번 주 {_format_count(summary['received_week'])}\n"
+                f"이번 달 {_format_count(summary['received_month'])}\n"
+                f"누적 {_format_count(summary['received_total'])}"
+            ),
+        },
+        {
+            "type": "mrkdwn",
+            "text": (
+                "*보낸 커피*\n"
+                f"이번 주 {_format_count(summary['sent_week'])}\n"
+                f"이번 달 {_format_count(summary['sent_month'])}\n"
+                f"누적 {_format_count(summary['sent_total'])}"
+            ),
+        },
     ]
 
 

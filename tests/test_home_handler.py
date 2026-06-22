@@ -76,6 +76,14 @@ class HomeViewBuilderTest(unittest.TestCase):
     def test_build_home_view_keeps_messages_central(self):
         view = home_handler.build_home_view(
             remaining=3,
+            summary={
+                "received_week": 2,
+                "received_month": 5,
+                "received_total": 12,
+                "sent_week": 1,
+                "sent_month": 4,
+                "sent_total": 9,
+            },
             received_recognitions=[
                 {
                     "sender_name": "민준",
@@ -98,7 +106,7 @@ class HomeViewBuilderTest(unittest.TestCase):
         self.assertEqual(view["type"], "home")
         self.assertEqual(
             block_texts(view, "header"),
-            ["☕ 모카 Home", "🤝 최근 받은 감사", "🤝 최근 보낸 감사"],
+            ["☕ 모카 Home", "나의 커피 요약", "최근 받은 감사", "최근 보낸 감사"],
         )
         self.assertGreaterEqual(
             sum(1 for block in view["blocks"] if block["type"] == "divider"),
@@ -106,6 +114,9 @@ class HomeViewBuilderTest(unittest.TestCase):
         )
         self.assertIn("*오늘 남은 커피*", field_texts(view))
         self.assertIn("`3잔`", field_texts(view))
+        self.assertIn("*받은 커피*\n이번 주 2잔\n이번 달 5잔\n누적 12잔", field_texts(view))
+        self.assertIn("*보낸 커피*\n이번 주 한 잔\n이번 달 4잔\n누적 9잔", field_texts(view))
+        self.assertIn("내가 주고받은 감사 흐름을 조용히 돌아보는 용도예요.", text)
         self.assertIn("고마운 순간을 놓치지 않도록 모카가 기록해둘게요.", text)
         self.assertIn("채널에서 `/thanks @user 메시지`로 바로 전할 수 있어요.", text)
         self.assertIn("최근 받은 감사", text)
@@ -131,6 +142,14 @@ class HomeViewBuilderTest(unittest.TestCase):
     def test_build_home_view_shows_received_empty_state(self):
         view = home_handler.build_home_view(
             remaining=0,
+            summary={
+                "received_week": 0,
+                "received_month": 0,
+                "received_total": 0,
+                "sent_week": 0,
+                "sent_month": 0,
+                "sent_total": 0,
+            },
             received_recognitions=[],
             sent_recognitions=[],
         )
@@ -138,6 +157,8 @@ class HomeViewBuilderTest(unittest.TestCase):
         text = view_text(view)
         self.assertIn("*오늘 남은 커피*", field_texts(view))
         self.assertIn("`0잔`", field_texts(view))
+        self.assertIn("*받은 커피*\n이번 주 0잔\n이번 달 0잔\n누적 0잔", field_texts(view))
+        self.assertIn("*보낸 커피*\n이번 주 0잔\n이번 달 0잔\n누적 0잔", field_texts(view))
         self.assertIn("> 아직 받은 감사가 없어요. 곧 따뜻한 마음이 도착할 거예요.", text)
         self.assertIn("> 아직 보낸 감사가 없어요. 오늘 도움을 준 동료에게 전해보세요.", text)
 
@@ -152,6 +173,14 @@ class HomeEventHandlerTest(unittest.TestCase):
             }
         )
         conn = FakeConnection()
+        summary = {
+            "received_week": 1,
+            "received_month": 2,
+            "received_total": 5,
+            "sent_week": 3,
+            "sent_month": 4,
+            "sent_total": 7,
+        }
         received_recognitions = [
             {
                 "sender_id": "U456",
@@ -174,6 +203,11 @@ class HomeEventHandlerTest(unittest.TestCase):
             patch.object(home_handler, "get_sent_today", return_value=2) as get_sent_today, \
             patch.object(
                 home_handler,
+                "get_personal_recognition_summary",
+                return_value=summary,
+            ) as get_personal_recognition_summary, \
+            patch.object(
+                home_handler,
                 "get_recent_received_recognitions",
                 return_value=received_recognitions,
             ) as get_recent_received_recognitions, \
@@ -189,6 +223,7 @@ class HomeEventHandlerTest(unittest.TestCase):
 
         get_connection.assert_called_once()
         get_sent_today.assert_called_once_with(conn, "U123")
+        get_personal_recognition_summary.assert_called_once_with(conn, "U123")
         get_recent_received_recognitions.assert_called_once_with(conn, "U123", 5)
         get_recent_sent_recognitions.assert_called_once_with(conn, "U123", 5)
         self.assertTrue(conn.closed)
@@ -198,6 +233,14 @@ class HomeEventHandlerTest(unittest.TestCase):
         text = view_text(client.published_views[0]["view"])
         self.assertIn("*오늘 남은 커피*", field_texts(client.published_views[0]["view"]))
         self.assertIn("`3잔`", field_texts(client.published_views[0]["view"]))
+        self.assertIn(
+            "*받은 커피*\n이번 주 한 잔\n이번 달 2잔\n누적 5잔",
+            field_texts(client.published_views[0]["view"]),
+        )
+        self.assertIn(
+            "*보낸 커피*\n이번 주 3잔\n이번 달 4잔\n누적 7잔",
+            field_texts(client.published_views[0]["view"]),
+        )
         self.assertIn("*민준*님이 전했어요", text)
         self.assertIn("빠른 공유 감사합니다", text)
         self.assertIn("*서연*님에게 보냈어요", text)
