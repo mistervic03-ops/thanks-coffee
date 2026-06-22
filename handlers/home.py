@@ -84,22 +84,31 @@ def build_home_view(remaining, received_recognitions, sent_recognitions):
     blocks = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"{RECOGNITION_EMOJI} 모카"},
+            "text": {"type": "plain_text", "text": f"{RECOGNITION_EMOJI} 모카 Home"},
         },
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "고마운 순간을 놓치지 않도록 모카가 기록해둘게요.\n"
+                    "🤝 고마운 순간을 놓치지 않도록 모카가 기록해둘게요.\n"
                     "채널에서 `/thanks @user 메시지`로 바로 전할 수 있어요."
                 ),
             },
         },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"☕ 오늘 남은 수량: {RECOGNITION_UNIT} {_format_count(remaining)}",
+                }
+            ],
+        },
         {"type": "divider"},
         {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": "*최근 받은 감사*"},
+            "type": "header",
+            "text": {"type": "plain_text", "text": "🤝 최근 받은 감사"},
         },
     ]
 
@@ -132,8 +141,8 @@ def build_home_view(remaining, received_recognitions, sent_recognitions):
         [
             {"type": "divider"},
             {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": "*최근 보낸 감사*"},
+                "type": "header",
+                "text": {"type": "plain_text", "text": "🤝 최근 보낸 감사"},
             },
         ]
     )
@@ -167,21 +176,12 @@ def build_home_view(remaining, received_recognitions, sent_recognitions):
         [
             {"type": "divider"},
             {
-                "type": "context",
-                "elements": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"오늘 남은 수량: {RECOGNITION_UNIT} {_format_count(remaining)}",
-                    }
-                ],
-            },
-            {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
                     "text": (
+                        "💡 *사용 예시*\n"
                         "고마운 순간이 있으면 채널에서 `/thanks @user 메시지`로 전해보세요.\n\n"
-                        "*사용 예시*\n"
                         "`/thanks @user 빠르게 도와줘서 고마워요`\n"
                         "`/thanks @user 3 큰 도움을 줘서 고마워요`"
                     ),
