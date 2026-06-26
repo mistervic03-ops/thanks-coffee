@@ -7,7 +7,7 @@ from unittest.mock import patch
 os.environ.setdefault("SLACK_BOT_TOKEN", "xoxb-test")
 os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test")
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
-os.environ.setdefault("FEED_CHANNEL_ID", "C123")
+os.environ.setdefault("ANNOUNCEMENT_CHANNEL_ID", "C123")
 os.environ.setdefault("RECOGNITION_EMOJI", "☕")
 os.environ.setdefault("RECOGNITION_UNIT", "커피")
 
@@ -27,11 +27,15 @@ class FakeApp:
 
 
 class FakeClient:
-    def __init__(self, users=None):
+    def __init__(self, users=None, views_publish_error=None):
         self.published_views = []
         self.users = users or {}
+        self.views_publish_error = views_publish_error
 
     def views_publish(self, **kwargs):
+        if self.views_publish_error:
+            raise self.views_publish_error
+
         self.published_views.append(kwargs)
 
     def users_info(self, user):
@@ -259,6 +263,30 @@ class HomeEventHandlerTest(unittest.TestCase):
             )
 
         get_connection.assert_not_called()
+        self.assertEqual(client.published_views, [])
+
+
+class HomeRefreshTest(unittest.TestCase):
+    def test_refresh_home_publishes_home_view(self):
+        client = FakeClient()
+        view = {"type": "home", "blocks": []}
+
+        with patch.object(home_handler, "build_home_view_for_user", return_value=view) as build_home_view_for_user:
+            home_handler.refresh_home(client, "U123")
+
+        build_home_view_for_user.assert_called_once_with(client, "U123")
+        self.assertEqual(client.published_views, [{"user_id": "U123", "view": view}])
+
+    def test_refresh_home_logs_and_swallows_failure(self):
+        client = FakeClient(views_publish_error=Exception("slack unavailable"))
+        view = {"type": "home", "blocks": []}
+
+        with patch.object(home_handler, "build_home_view_for_user", return_value=view), \
+            self.assertLogs(home_handler.logger, level="WARNING") as logs:
+            home_handler.refresh_home(client, "U123")
+
+        self.assertEqual(logs.records[0].event, "home_refresh_failed")
+        self.assertEqual(logs.records[0].detail, "U123")
         self.assertEqual(client.published_views, [])
 
 

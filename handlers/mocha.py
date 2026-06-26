@@ -1,5 +1,6 @@
 from slack_sdk.errors import SlackApiError
 
+from config import ANNOUNCEMENT_CHANNEL_ID
 from db.queries import (
     delete_recognition,
     get_connection,
@@ -9,8 +10,9 @@ from db.queries import (
 from lifecycle import tracked_handler
 from logger import get_logger
 from services.admin import is_admin
-from services.feed import post_summary
+from services.feed import build_summary_fallback_text, post_summary
 from services.stats import (
+    build_leaderboard_blocks,
     build_current_month_summary,
     build_monthly_summary,
     build_weekly_summary,
@@ -25,11 +27,17 @@ from services.stats import (
 logger = get_logger(__name__)
 
 
-def post_ephemeral(client, body, text):
+def post_ephemeral(client, body, text, blocks=None):
+    kwargs = {
+        "channel": body["channel_id"],
+        "user": body["user_id"],
+        "text": text,
+    }
+    if blocks is not None:
+        kwargs["blocks"] = blocks
+
     client.chat_postEphemeral(
-        channel=body["channel_id"],
-        user=body["user_id"],
-        text=text,
+        **kwargs,
     )
 
 
@@ -50,6 +58,9 @@ def register(app):
         if parts and parts[0] == "summary":
             handle_summary_command(client, body, parts[1:])
             return
+        if parts == ["pin"]:
+            handle_pin_command(client, body)
+            return
 
         post_ephemeral(client, body, build_mocha_help())
 
@@ -64,6 +75,7 @@ def build_mocha_help():
             "- /mocha summary weekly preview — 주간 요약 미리보기",
             "- /mocha summary monthly preview — 월간 요약 미리보기",
             "- /mocha summary this-month preview — 이번 달 요약 미리보기",
+            "• /mocha pin — 채널에 봇 소개 메시지 게시 및 pin",
         ]
     )
 
@@ -80,12 +92,17 @@ def handle_summary_command(client, body, parts):
         return
 
     try:
-        summary_text = _build_summary_text(summary_type)
+        summary_blocks, leaderboard_blocks = _build_summary_payload(summary_type)
         if preview:
-            post_ephemeral(client, body, summary_text)
+            post_ephemeral(
+                client,
+                body,
+                build_summary_fallback_text(summary_blocks),
+                blocks=summary_blocks,
+            )
             return
 
-        feed_message_ts = post_summary(client, summary_text)
+        feed_message_ts = post_summary(client, summary_blocks)
     except Exception as exc:
         logger.warning(
             "",
@@ -112,12 +129,68 @@ def handle_summary_command(client, body, parts):
             },
         )
         post_ephemeral(client, body, "✅ 모카 감사 요약을 feed 채널에 올렸어요.")
+        post_ephemeral(
+            client,
+            body,
+            "📋 관리자용 상세 현황",
+            blocks=leaderboard_blocks,
+        )
     else:
         post_ephemeral(
             client,
             body,
             "✅ 모카 감사 요약을 만들었어요. FEED_ENABLED=false라 feed 채널에는 올리지 않았어요.",
         )
+
+
+def handle_pin_command(client, body):
+    try:
+        response = client.chat_postMessage(
+            channel=ANNOUNCEMENT_CHANNEL_ID,
+            text="☕ 모카(Mocha) 감사 봇입니다.",
+            blocks=build_pin_intro_blocks(),
+        )
+        client.conversations_pin(
+            channel=ANNOUNCEMENT_CHANNEL_ID,
+            timestamp=response["ts"],
+        )
+    except Exception:
+        post_ephemeral(client, body, "소개 메시지 게시에 실패했습니다.")
+        return
+
+    post_ephemeral(client, body, "소개 메시지를 게시하고 pin했습니다.")
+
+
+def build_pin_intro_blocks():
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    "☕ *모카(Mocha) 감사 봇입니다.*\n"
+                    "고마운 동료에게 커피 한 잔을 전해보세요."
+                ),
+            },
+        },
+        {"type": "divider"},
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    "*사용법*\n"
+                    "`/thanks @동료 고마운 메시지`\n\n"
+                    "*더 보내고 싶다면*\n"
+                    "`/thanks @동료 3 메시지` — 커피 3잔\n"
+                    "`/thanks ☕☕☕ @동료 메시지` — 이모지로도 가능\n\n"
+                    "*확인하기*\n"
+                    "`/thanks status` — 오늘 남은 수량\n"
+                    "`/thanks received` — 받은 감사 목록"
+                ),
+            },
+        },
+    ]
 
 
 def handle_delete_command(client, body, parts):
@@ -190,21 +263,26 @@ def _delete_feed_message(client, recognition):
 
 
 def _build_summary_text(summary_type):
+    summary_blocks, _ = _build_summary_payload(summary_type)
+    return summary_blocks
+
+
+def _build_summary_payload(summary_type):
     conn = get_connection()
     try:
         if summary_type == "weekly":
             start_date, end_date = get_previous_week_range()
             stats = load_weekly_stats(conn, start_date, end_date)
-            return build_weekly_summary(stats)
+            return build_weekly_summary(stats), build_leaderboard_blocks(stats)
 
         if summary_type == "this-month":
             start_date, end_date = get_current_month_range()
             stats = load_weekly_stats(conn, start_date, end_date)
-            return build_current_month_summary(stats)
+            return build_current_month_summary(stats), build_leaderboard_blocks(stats)
 
         year, month = get_previous_month()
         stats = load_monthly_stats(conn, year, month)
-        return build_monthly_summary(stats)
+        return build_monthly_summary(stats), build_leaderboard_blocks(stats)
     finally:
         release_connection(conn)
 

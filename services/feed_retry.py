@@ -1,6 +1,6 @@
 from slack_sdk.errors import SlackApiError
 
-from config import FEED_CHANNEL_ID, FEED_ENABLED
+from config import ANNOUNCEMENT_CHANNEL_ID, FEED_ENABLED
 from db.queries import (
     get_connection,
     get_failed_feed_records,
@@ -11,7 +11,7 @@ from db.queries import (
 )
 from logger import get_logger
 from services.admin import notify_admins
-from services.feed import build_feed_text
+from services.feed import build_feed_blocks, build_feed_fallback_text
 
 
 logger = get_logger(__name__)
@@ -31,8 +31,12 @@ def retry_failed_feeds(app):
             try:
                 total_received = get_total_received(conn, record["receiver_id"])
                 app.client.chat_postMessage(
-                    channel=FEED_CHANNEL_ID,
-                    text=build_feed_text(
+                    channel=ANNOUNCEMENT_CHANNEL_ID,
+                    text=build_feed_fallback_text(
+                        record["sender_id"],
+                        record["receiver_id"],
+                    ),
+                    blocks=build_feed_blocks(
                         sender_id=record["sender_id"],
                         receiver_id=record["receiver_id"],
                         message=record["message"],

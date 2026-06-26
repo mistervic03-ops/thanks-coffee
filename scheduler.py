@@ -10,9 +10,11 @@ from db.queries import (
     try_summary_lock,
 )
 from logger import get_logger
+from services.admin import notify_admins_with_blocks
 from services.feed_retry import retry_failed_feeds
 from services.feed import post_summary
 from services.stats import (
+    build_leaderboard_blocks,
     build_monthly_summary,
     build_weekly_summary,
     get_previous_month,
@@ -111,13 +113,15 @@ def _run_locked_summary(client, summary_type, post_summary_func):
 def _post_weekly_summary(conn, client):
     start_date, end_date = get_previous_week_range()
     stats = load_weekly_stats(conn, start_date, end_date)
-    post_summary(client, build_weekly_summary(stats))
+    if post_summary(client, build_weekly_summary(stats)):
+        notify_admins_with_blocks(client, build_leaderboard_blocks(stats))
 
 
 def _post_monthly_summary(conn, client):
     year, month = get_previous_month()
     stats = load_monthly_stats(conn, year, month)
-    post_summary(client, build_monthly_summary(stats))
+    if post_summary(client, build_monthly_summary(stats)):
+        notify_admins_with_blocks(client, build_leaderboard_blocks(stats))
 
 
 def _feed_failure_event(exc):

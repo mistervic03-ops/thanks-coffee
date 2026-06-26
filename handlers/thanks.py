@@ -2,7 +2,7 @@ from zoneinfo import ZoneInfo
 
 from slack_sdk.errors import SlackApiError
 
-from config import DAILY_LIMIT, FEED_CHANNEL_ID, RECOGNITION_EMOJI, RECOGNITION_UNIT
+from config import ANNOUNCEMENT_CHANNEL_ID, DAILY_LIMIT, RECOGNITION_EMOJI, RECOGNITION_UNIT
 from db.queries import (
     get_connection,
     get_recent_received_recognitions,
@@ -79,19 +79,16 @@ def register(app):
                 post_ephemeral(client, body, build_thanks_help(exc.reason))
             return
 
+        receiver_user = get_receiver_user(client, request.receiver_id)
         try:
-            # Slack client is already here, so bot lookup stays in the handler and the parser remains Slack-free.
-            if receiver_is_bot(client, request.receiver_id):
+            # Slack client is already here, so receiver lookup stays in the handler and the parser remains Slack-free.
+            if receiver_is_bot(receiver_user):
                 raise ParseError(BOT_RECEIVER)
+            if not receiver_is_active(receiver_user):
+                post_ephemeral(client, body, "❌ 비활성화된 사용자에게는 감사를 보낼 수 없어요.")
+                return
         except ParseError as exc:
             post_ephemeral(client, body, f"❌ {exc.reason}")
-            return
-        except Exception:
-            post_ephemeral(
-                client,
-                body,
-                "❌ 사용자 정보를 확인할 수 없어요. 잠시 후 다시 시도해주세요.",
-            )
             return
 
         idempotency_key = extract_idempotency_key(body, context)
@@ -129,14 +126,18 @@ def register(app):
                         "detail": f"requested={exc.requested} remaining={exc.remaining}",
                     },
                 )
-                post_ephemeral(
-                    client,
-                    body,
-                    (
+                if exc.remaining > 0:
+                    text = (
                         f"❌ 오늘은 {_format_unit_count(exc.remaining)}만 "
                         f"더 보낼 수 있어요. (요청: {_format_unit_count(exc.requested)})"
-                    ),
-                )
+                    )
+                else:
+                    text = (
+                        "❌ 오늘의 감사 한도를 모두 사용했어요. "
+                        f"(요청: {_format_unit_count(exc.requested)})"
+                    )
+
+                post_ephemeral(client, body, text)
                 return
 
             if not result.is_duplicate:
@@ -147,7 +148,7 @@ def register(app):
                         update_feed_ts(
                             conn=conn,
                             recognition_id=result.recognition_id,
-                            feed_channel_id=FEED_CHANNEL_ID,
+                            feed_channel_id=ANNOUNCEMENT_CHANNEL_ID,
                             feed_message_ts=feed_message_ts,
                         )
                     else:
@@ -189,6 +190,10 @@ def register(app):
                 f"오늘은 아직 {_format_unit_count(result.remaining)}이 남아 있어요."
             ),
         )
+        from handlers.home import refresh_home
+
+        refresh_home(client, sender_id)
+        refresh_home(client, request.receiver_id)
 
 
 def handle_status(client, body, user_id):
@@ -301,10 +306,25 @@ def get_user_display_name(client, user_id):
     )
 
 
-def receiver_is_bot(client, receiver_id):
-    response = client.users_info(user=receiver_id)
-    user = response["user"]
-    return bool(user.get("is_bot"))
+def get_receiver_user(client, receiver_id):
+    try:
+        response = client.users_info(user=receiver_id)
+    except Exception:
+        logger.warning(
+            "",
+            extra={"event": "receiver_status_check_failed", "detail": receiver_id},
+        )
+        return None
+
+    return response.get("user", {})
+
+
+def receiver_is_bot(receiver_user):
+    return bool(receiver_user and receiver_user.get("is_bot"))
+
+
+def receiver_is_active(receiver_user):
+    return not bool(receiver_user and receiver_user.get("deleted"))
 
 
 def extract_idempotency_key(body, context=None):

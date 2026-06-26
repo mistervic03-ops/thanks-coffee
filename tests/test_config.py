@@ -5,7 +5,7 @@ import unittest
 os.environ.setdefault("SLACK_BOT_TOKEN", "xoxb-test")
 os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test")
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
-os.environ.setdefault("FEED_CHANNEL_ID", "C123")
+os.environ.setdefault("ANNOUNCEMENT_CHANNEL_ID", "C123")
 
 from config import (  # noqa: E402
     HEALTH_CHECK_PORT,
@@ -26,7 +26,7 @@ class ConfigTest(unittest.TestCase):
         validate_feed_config(False, "")
 
     def test_feed_enabled_requires_channel(self):
-        with self.assertRaisesRegex(RuntimeError, "FEED_CHANNEL_ID"):
+        with self.assertRaisesRegex(RuntimeError, "ANNOUNCEMENT_CHANNEL_ID"):
             validate_feed_config(True, "")
 
     def test_enabled_flag_only_accepts_true(self):

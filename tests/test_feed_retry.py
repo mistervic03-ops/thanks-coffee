@@ -8,7 +8,7 @@ from slack_sdk.errors import SlackApiError
 os.environ.setdefault("SLACK_BOT_TOKEN", "xoxb-test")
 os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test")
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
-os.environ.setdefault("FEED_CHANNEL_ID", "C123")
+os.environ.setdefault("ANNOUNCEMENT_CHANNEL_ID", "C123")
 
 import services.feed_retry as feed_retry  # noqa: E402
 
@@ -95,6 +95,9 @@ class FeedRetryTest(unittest.TestCase):
         self.assertEqual(app.client.messages[0]["channel"], "C123")
         self.assertIn("<@U123>", app.client.messages[0]["text"])
         self.assertIn("<@U456>", app.client.messages[0]["text"])
+        self.assertIn("blocks", app.client.messages[0])
+        self.assertIn("<@U123>", app.client.messages[0]["blocks"][0]["text"]["text"])
+        self.assertIn("<@U456>", app.client.messages[0]["blocks"][0]["text"]["text"])
 
     def test_retry_failure_increments_retry_count(self):
         conn = FakeConnection()

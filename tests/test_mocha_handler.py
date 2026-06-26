@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("SLACK_BOT_TOKEN", "xoxb-test")
 os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test")
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
-os.environ.setdefault("FEED_CHANNEL_ID", "C123")
+os.environ.setdefault("ANNOUNCEMENT_CHANNEL_ID", "C123")
 
 import handlers.mocha as mocha_handler  # noqa: E402
 import app as app_module  # noqa: E402
@@ -34,19 +34,36 @@ class FakeApp:
 
 
 class FakeClient:
-    def __init__(self, delete_error=None):
+    def __init__(self, delete_error=None, post_error=None, pin_error=None):
         self.ephemeral_messages = []
         self.deleted_messages = []
+        self.posted_messages = []
+        self.pinned_messages = []
         self.delete_error = delete_error
+        self.post_error = post_error
+        self.pin_error = pin_error
 
     def chat_postEphemeral(self, **kwargs):
         self.ephemeral_messages.append(kwargs)
+
+    def chat_postMessage(self, **kwargs):
+        if self.post_error:
+            raise self.post_error
+
+        self.posted_messages.append(kwargs)
+        return {"ts": "123.456"}
 
     def chat_delete(self, **kwargs):
         if self.delete_error:
             raise self.delete_error
 
         self.deleted_messages.append(kwargs)
+
+    def conversations_pin(self, **kwargs):
+        if self.pin_error:
+            raise self.pin_error
+
+        self.pinned_messages.append(kwargs)
 
 
 class FakeConnection:
@@ -69,9 +86,15 @@ class MochaCommandTest(unittest.TestCase):
         is_admin=True,
         recognition=None,
         delete_error=None,
+        post_error=None,
+        pin_error=None,
     ):
         app = FakeApp()
-        client = FakeClient(delete_error=delete_error)
+        client = FakeClient(
+            delete_error=delete_error,
+            post_error=post_error,
+            pin_error=pin_error,
+        )
         ack = Mock()
         conn = FakeConnection()
         body = {
@@ -110,9 +133,26 @@ class MochaCommandTest(unittest.TestCase):
         self,
         text,
         *,
-        summary_text="summary text",
+        summary_text=None,
         feed_message_ts="123.456",
     ):
+        if summary_text is None:
+            summary_text = [
+                {
+                    "type": "header",
+                    "text": {"type": "plain_text", "text": "📊 직전 주 모카 감사 요약"},
+                }
+            ]
+        leaderboard_blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "📋 관리자용 상세 현황 (나에게만 보여요)",
+                },
+            }
+        ]
+
         app = FakeApp()
         client = FakeClient()
         ack = Mock()
@@ -126,9 +166,9 @@ class MochaCommandTest(unittest.TestCase):
         with patch.object(mocha_handler, "is_admin", return_value=True), \
             patch.object(
                 mocha_handler,
-                "_build_summary_text",
-                return_value=summary_text,
-            ) as build_summary_text, \
+                "_build_summary_payload",
+                return_value=(summary_text, leaderboard_blocks),
+            ) as build_summary_payload, \
             patch.object(
                 mocha_handler,
                 "post_summary",
@@ -141,7 +181,8 @@ class MochaCommandTest(unittest.TestCase):
         return {
             "ack": ack,
             "client": client,
-            "build_summary_text": build_summary_text,
+            "build_summary_text": build_summary_payload,
+            "leaderboard_blocks": leaderboard_blocks,
             "post_summary": post_summary,
             "info_log": info_log,
             "warning_log": warning_log,
@@ -176,6 +217,58 @@ class MochaCommandTest(unittest.TestCase):
         self.assertEqual(
             result["client"].ephemeral_messages[0]["text"],
             mocha_handler.build_mocha_help(),
+        )
+
+    def test_mocha_pin_posts_intro_message_and_pins_it(self):
+        result = self.run_mocha("pin")
+
+        result["ack"].assert_called_once()
+        result["get_connection"].assert_not_called()
+        self.assertEqual(len(result["client"].posted_messages), 1)
+        posted = result["client"].posted_messages[0]
+        self.assertEqual(posted["channel"], "C123")
+        self.assertEqual(posted["text"], "☕ 모카(Mocha) 감사 봇입니다.")
+        self.assertEqual(posted["blocks"], mocha_handler.build_pin_intro_blocks())
+        self.assertEqual(
+            result["client"].pinned_messages,
+            [{"channel": "C123", "timestamp": "123.456"}],
+        )
+        self.assertEqual(
+            result["client"].ephemeral_messages[0]["text"],
+            "소개 메시지를 게시하고 pin했습니다.",
+        )
+
+    def test_mocha_pin_shows_error_when_post_fails(self):
+        result = self.run_mocha("pin", post_error=RuntimeError("slack failed"))
+
+        result["ack"].assert_called_once()
+        self.assertEqual(result["client"].posted_messages, [])
+        self.assertEqual(result["client"].pinned_messages, [])
+        self.assertEqual(
+            result["client"].ephemeral_messages[0]["text"],
+            "소개 메시지 게시에 실패했습니다.",
+        )
+
+    def test_mocha_pin_shows_error_when_pin_fails(self):
+        result = self.run_mocha("pin", pin_error=RuntimeError("pin failed"))
+
+        result["ack"].assert_called_once()
+        self.assertEqual(len(result["client"].posted_messages), 1)
+        self.assertEqual(result["client"].pinned_messages, [])
+        self.assertEqual(
+            result["client"].ephemeral_messages[0]["text"],
+            "소개 메시지 게시에 실패했습니다.",
+        )
+
+    def test_mocha_pin_rejects_non_admin(self):
+        result = self.run_mocha("pin", is_admin=False)
+
+        result["ack"].assert_called_once()
+        self.assertEqual(result["client"].posted_messages, [])
+        self.assertEqual(result["client"].pinned_messages, [])
+        self.assertEqual(
+            result["client"].ephemeral_messages[0]["text"],
+            "이 커맨드는 관리자만 사용할 수 있습니다.",
         )
 
     def test_mocha_delete_removes_db_record_and_feed_message(self):
@@ -300,13 +393,19 @@ class MochaCommandTest(unittest.TestCase):
         )
 
     def test_mocha_summary_weekly_posts_to_feed(self):
-        result = self.run_mocha_summary("summary weekly", summary_text="weekly summary")
+        summary_blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "📊 직전 주 모카 감사 요약"},
+            }
+        ]
+        result = self.run_mocha_summary("summary weekly", summary_text=summary_blocks)
 
         result["ack"].assert_called_once()
         result["build_summary_text"].assert_called_once_with("weekly")
         result["post_summary"].assert_called_once_with(
             result["client"],
-            "weekly summary",
+            summary_blocks,
         )
         result["info_log"].assert_called_once_with(
             "",
@@ -321,61 +420,110 @@ class MochaCommandTest(unittest.TestCase):
             result["client"].ephemeral_messages[0]["text"],
             "✅ 모카 감사 요약을 feed 채널에 올렸어요.",
         )
+        self.assertEqual(
+            result["client"].ephemeral_messages[1]["text"],
+            "📋 관리자용 상세 현황",
+        )
+        self.assertEqual(
+            result["client"].ephemeral_messages[1]["blocks"],
+            result["leaderboard_blocks"],
+        )
 
     def test_mocha_summary_weekly_preview_sends_ephemeral(self):
+        summary_blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "📊 직전 주 모카 감사 요약"},
+            }
+        ]
         result = self.run_mocha_summary(
             "summary weekly preview",
-            summary_text="weekly summary",
+            summary_text=summary_blocks,
         )
 
         result["build_summary_text"].assert_called_once_with("weekly")
         result["post_summary"].assert_not_called()
         self.assertEqual(
             result["client"].ephemeral_messages[0]["text"],
-            "weekly summary",
+            "📊 직전 주 모카 감사 요약",
         )
+        self.assertEqual(result["client"].ephemeral_messages[0]["blocks"], summary_blocks)
+        self.assertEqual(len(result["client"].ephemeral_messages), 1)
 
     def test_mocha_summary_monthly_posts_to_feed(self):
+        summary_blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "📊 2026년 5월 모카 감사 요약"},
+            }
+        ]
         result = self.run_mocha_summary(
             "summary monthly",
-            summary_text="monthly summary",
+            summary_text=summary_blocks,
         )
 
         result["build_summary_text"].assert_called_once_with("monthly")
         result["post_summary"].assert_called_once_with(
             result["client"],
-            "monthly summary",
+            summary_blocks,
         )
         self.assertEqual(
             result["client"].ephemeral_messages[0]["text"],
             "✅ 모카 감사 요약을 feed 채널에 올렸어요.",
         )
+        self.assertEqual(
+            result["client"].ephemeral_messages[1]["text"],
+            "📋 관리자용 상세 현황",
+        )
+        self.assertEqual(
+            result["client"].ephemeral_messages[1]["blocks"],
+            result["leaderboard_blocks"],
+        )
 
     def test_mocha_summary_monthly_preview_sends_ephemeral(self):
+        summary_blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "📊 2026년 5월 모카 감사 요약"},
+            }
+        ]
         result = self.run_mocha_summary(
             "summary monthly preview",
-            summary_text="monthly summary",
+            summary_text=summary_blocks,
         )
 
         result["build_summary_text"].assert_called_once_with("monthly")
         result["post_summary"].assert_not_called()
         self.assertEqual(
             result["client"].ephemeral_messages[0]["text"],
-            "monthly summary",
+            "📊 2026년 5월 모카 감사 요약",
         )
+        self.assertEqual(result["client"].ephemeral_messages[0]["blocks"], summary_blocks)
+        self.assertEqual(len(result["client"].ephemeral_messages), 1)
 
     def test_mocha_summary_this_month_preview_sends_ephemeral(self):
+        summary_blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "📊 2026년 6월 현재까지 모카 감사 요약",
+                },
+            }
+        ]
         result = self.run_mocha_summary(
             "summary this-month preview",
-            summary_text="this month summary",
+            summary_text=summary_blocks,
         )
 
         result["build_summary_text"].assert_called_once_with("this-month")
         result["post_summary"].assert_not_called()
         self.assertEqual(
             result["client"].ephemeral_messages[0]["text"],
-            "this month summary",
+            "📊 2026년 6월 현재까지 모카 감사 요약",
         )
+        self.assertEqual(result["client"].ephemeral_messages[0]["blocks"], summary_blocks)
+        self.assertEqual(len(result["client"].ephemeral_messages), 1)
 
     def test_mocha_summary_this_month_without_preview_shows_help(self):
         result = self.run_mocha_summary("summary this-month")
@@ -419,6 +567,7 @@ class MochaCommandTest(unittest.TestCase):
             ) as get_previous_week_range_mock, \
             patch.object(mocha_handler, "load_weekly_stats", return_value=stats) as load_weekly_stats, \
             patch.object(mocha_handler, "build_weekly_summary", return_value="weekly summary"), \
+            patch.object(mocha_handler, "build_leaderboard_blocks", return_value=[]), \
             patch.object(mocha_handler, "release_connection") as release_connection:
             summary_text = mocha_handler._build_summary_text("weekly")
 
@@ -443,6 +592,7 @@ class MochaCommandTest(unittest.TestCase):
             ) as get_current_month_range_mock, \
             patch.object(mocha_handler, "load_weekly_stats", return_value=stats) as load_weekly_stats, \
             patch.object(mocha_handler, "build_current_month_summary", return_value="this month summary"), \
+            patch.object(mocha_handler, "build_leaderboard_blocks", return_value=[]), \
             patch.object(mocha_handler, "release_connection") as release_connection:
             summary_text = mocha_handler._build_summary_text("this-month")
 

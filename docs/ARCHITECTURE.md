@@ -83,11 +83,11 @@ DB 연결은 `psycopg2.pool.ThreadedConnectionPool`을 사용한다. `init_db()`
 
 ## 7. Feed posting 방식
 
-`services/feed.py`가 Slack feed 채널 게시를 전담한다.
+`services/feed.py`가 Slack 전사 공지 채널 게시를 전담한다.
 
-- feed 채널은 `FEED_CHANNEL_ID`를 사용한다.
+- 전사 공지 채널은 `ANNOUNCEMENT_CHANNEL_ID`를 사용한다.
 - feed 메시지의 이모지와 단위 명칭은 `RECOGNITION_EMOJI`, `RECOGNITION_UNIT`을 사용한다.
-- `FEED_ENABLED=false`이면 feed 채널에는 게시하지 않고 recognition 저장만 수행한다.
+- `FEED_ENABLED=false`이면 전사 공지 채널에는 게시하지 않고 recognition 저장만 수행한다.
 - feed 게시에 성공하면 Slack message `ts`를 `recognition.feed_message_ts`에 저장하고 `feed_post_status`를 `posted`로 바꾼다.
 - feed 게시 실패는 `failed`, feed 비활성화는 `skipped`로 기록한다.
 - 앱 시작 시 `failed` 상태의 feed 게시를 한 번 재시도한다.
@@ -105,18 +105,21 @@ Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APSchedul
 - 주간 요약은 매주 월요일 09:00 KST에 실행되며, 직전 월요일부터 직전 일요일까지의 recognition을 집계한다.
 - 월간 요약은 매월 1일 09:00 KST에 실행되며, 직전 월의 recognition을 집계한다.
 - feed 재시도는 10분마다 실행되며 `feed_post_status='failed'`이고 `retry_count < 3`인 recognition을 다시 게시한다.
-- 요약 집계는 `db/queries.py`, 메시지 생성은 `services/stats.py`, feed 채널 게시는 `services/feed.py`가 담당한다.
+- 요약 집계는 `db/queries.py`, 메시지 생성은 `services/stats.py`, 전사 공지 채널 게시는 `services/feed.py`가 담당한다.
+- 자동 주간/월간 요약 게시에 성공하면 `services/admin.py`가 관리자 전체에게 관리자용 상세 현황 Block Kit DM을 보낸다.
 - 자동 주간/월간 요약은 PostgreSQL advisory lock을 사용해 여러 프로세스에서 scheduler가 동시에 실행되어도 하나만 게시한다. lock 획득에 실패한 프로세스는 조용히 skip한다.
 - 요약 게시 실패나 Slack API 오류는 로그로 남기고 다음 스케줄 실행을 기다린다. 스케줄러 시작 실패도 Bolt 프로세스를 종료시키지 않는다.
 - Spark PoC에서는 기본값을 `SCHEDULER_ENABLED=false`로 둔다.
 
 ## 9. 수동 요약 게시
 
-`/mocha summary weekly`, `/mocha summary monthly`, `/mocha summary weekly preview`, `/mocha summary monthly preview`, `/mocha summary this-month preview`, `/mocha delete {recognition_id}`는 `ADMIN_USER_IDS`에 포함된 Slack user 또는 Slack workspace Admin/Owner만 실행할 수 있다. 앱 시작 시 `services/admin.py`가 Slack `users_list()`로 workspace Admin/Owner를 한 번 조회해 캐싱한다.
+`/mocha summary weekly`, `/mocha summary monthly`, `/mocha summary weekly preview`, `/mocha summary monthly preview`, `/mocha summary this-month preview`, `/mocha delete {recognition_id}`, `/mocha pin`은 `ADMIN_USER_IDS`에 포함된 Slack user 또는 Slack workspace Admin/Owner만 실행할 수 있다. 앱 시작 시 `services/admin.py`가 Slack `users_list()`로 workspace Admin/Owner를 한 번 조회해 캐싱한다.
 
 - `/mocha` 또는 `/mocha help`는 권한에 따라 ephemeral 도움말을 보여준다. 운영자는 실행 가능한 관리자 명령어를 보고, 운영자가 아닌 사용자는 관리자 전용이라는 안내를 받는다.
 - 수동 주간 요약은 자동 weekly summary와 동일하게 직전 월요일부터 직전 일요일까지의 recognition을 집계한다.
 - 수동 월간 요약은 자동 monthly summary와 동일하게 직전 월의 recognition을 집계한다.
-- `preview`가 붙으면 feed 채널에 게시하지 않고 실행한 운영자에게 ephemeral message로만 보여준다.
+- 수동 요약을 전사 공지 채널에 게시하면 실행한 운영자에게 관리자용 상세 현황 Block Kit ephemeral message를 추가로 보낸다.
+- `preview`가 붙으면 전사 공지 채널에 게시하지 않고 실행한 운영자에게 ephemeral message로만 보여준다.
 - `/mocha summary this-month preview`는 이번 달 1일부터 현재 날짜까지 집계하며 feed 게시 기능은 없다.
 - `/mocha delete {recognition_id}`는 잘못 입력된 단일 recognition을 DB에서 삭제한다. 기존 feed 메시지가 있으면 Slack `chat_delete`로 함께 삭제하며, feed 삭제가 실패해도 DB 삭제는 유지하고 `feed_delete_failed` warning 로그를 남긴다.
+- `/mocha pin`은 전사 공지 채널에 봇 소개 Block Kit 메시지를 게시하고 Slack `conversations.pin`으로 pin한다.

@@ -63,52 +63,115 @@ def build_current_month_summary(stats):
     return _build_summary(title, stats, "이번 달에는 아직 첫 감사가 없었어요.")
 
 
+def build_leaderboard_blocks(stats):
+    return [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "📋 관리자용 상세 현황 (나에게만 보여요)",
+            },
+        },
+        {
+            "type": "section",
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": (
+                        "*🎉 감사를 많이 받은 분*\n"
+                        f"{_format_leaderboard(stats['top_receivers'])}"
+                    ),
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": (
+                        "*💌 감사를 많이 전한 분*\n"
+                        f"{_format_leaderboard(stats['top_senders'])}"
+                    ),
+                },
+            ],
+        },
+    ]
+
+
 def _build_summary(title, stats, empty_message):
-    lines = [
-        title,
-        "",
-        _format_summary_intro(stats),
-        "",
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": title},
+        }
     ]
 
     if stats["total_recognitions"] == 0:
-        lines.append(empty_message)
-        return "\n".join(lines)
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": empty_message},
+            }
+        )
+        return blocks
 
-    lines.extend(
+    blocks.extend(
         [
-            "감사를 많이 받은 분",
-            *_format_rankings(stats["top_receivers"]),
-            "",
-            "감사를 많이 전한 분",
-            *_format_rankings(stats["top_senders"]),
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": _format_summary_intro(stats)},
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            "*💌 감사를 전한 분들*\n"
+                            f"{_format_participants(stats['top_senders'])}"
+                        ),
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            "*🎉 감사를 받은 분들*\n"
+                            f"{_format_participants(stats['top_receivers'])}"
+                        ),
+                    },
+                ],
+            },
         ]
     )
-    return "\n".join(lines)
+    return blocks
 
 
 def _format_summary_intro(stats):
+    unit_count = stats.get("total_unit_count", stats["total_recognitions"])
     return (
-        f"{RECOGNITION_EMOJI} 감사 메시지 {stats['total_recognitions']}건이 오갔고, "
-        f"{stats['participant_count']}명이 함께했습니다."
+        f"이번 주 팀에서 {RECOGNITION_UNIT} *{_format_count(unit_count)}*이 오갔어요 "
+        f"{RECOGNITION_EMOJI}\n"
+        f"{stats['participant_count']}명이 감사를 주고받았습니다."
     )
 
 
-def _format_rankings(rankings):
-    if not rankings:
-        return ["  기록 없음"]
+def _format_participants(rows):
+    if not rows:
+        return "기록 없음"
 
-    return [
-        f"  {index}. <@{row['user_id']}> — {_format_unit_count(row['unit_count'])}"
-        for index, row in enumerate(rankings, start=1)
-    ]
+    return " ".join(f"<@{row['user_id']}>" for row in rows)
 
 
-def _format_unit_count(unit_count):
+def _format_leaderboard(rows):
+    if not rows:
+        return "기록 없음"
+
+    return "\n".join(
+        f"{index}. <@{row['user_id']}> — {_format_count(row['unit_count'])}"
+        for index, row in enumerate(rows[:5], start=1)
+    )
+
+
+def _format_count(unit_count):
     if unit_count == 1:
-        return f"한 잔의 {RECOGNITION_UNIT}"
+        return "한 잔"
 
-    return f"{unit_count}잔의 {RECOGNITION_UNIT}"
+    return f"{unit_count}잔"
 
 
 def _format_date(value):

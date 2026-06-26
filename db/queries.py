@@ -520,13 +520,13 @@ def _get_stats_for_dates(conn, start_date, end_date):
     with conn.cursor() as cur:
         cur.execute(
             f"""
-            SELECT COUNT(*)
+            SELECT COUNT(*), COALESCE(SUM(unit_count), 0)
             FROM recognition
             WHERE {date_filter}
             """,
             params,
         )
-        total_recognitions = cur.fetchone()[0]
+        total_recognitions, total_unit_count = cur.fetchone()
 
         cur.execute(
             f"""
@@ -552,7 +552,7 @@ def _get_stats_for_dates(conn, start_date, end_date):
             WHERE {date_filter}
             GROUP BY receiver_id
             ORDER BY SUM(unit_count) DESC, COUNT(*) DESC
-            LIMIT 3
+            LIMIT 5
             """,
             params,
         )
@@ -572,7 +572,7 @@ def _get_stats_for_dates(conn, start_date, end_date):
             WHERE {date_filter}
             GROUP BY sender_id
             ORDER BY SUM(unit_count) DESC, COUNT(*) DESC
-            LIMIT 3
+            LIMIT 5
             """,
             params,
         )
@@ -589,6 +589,7 @@ def _get_stats_for_dates(conn, start_date, end_date):
         "start_date": start_date,
         "end_date": end_date,
         "total_recognitions": total_recognitions,
+        "total_unit_count": total_unit_count,
         "participant_count": participant_count,
         "top_receivers": top_receivers,
         "top_senders": top_senders,

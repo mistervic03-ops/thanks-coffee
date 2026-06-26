@@ -59,6 +59,25 @@ def notify_admins(client, message):
             )
 
 
+def notify_admins_with_blocks(client, blocks):
+    if not _admin_user_ids:
+        logger.warning("", extra={"event": "no_admins_configured"})
+        return
+
+    for user_id in _admin_user_ids:
+        try:
+            client.chat_postMessage(
+                channel=user_id,
+                text="📋 관리자용 상세 현황",
+                blocks=blocks,
+            )
+        except Exception:
+            logger.warning(
+                "",
+                extra={"event": "admin_notify_failed", "detail": user_id},
+            )
+
+
 def notify_cached_admins(message):
     if _admin_client is None:
         return

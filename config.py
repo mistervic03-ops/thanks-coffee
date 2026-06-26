@@ -21,22 +21,22 @@ def parse_enabled_flag(value: str) -> bool:
     return value.lower() == "true"
 
 
-def validate_feed_config(feed_enabled: bool, feed_channel_id: str) -> None:
-    if feed_enabled and not feed_channel_id:
-        raise RuntimeError("FEED_CHANNEL_ID is required when FEED_ENABLED=true")
+def validate_feed_config(feed_enabled: bool, announcement_channel_id: str) -> None:
+    if feed_enabled and not announcement_channel_id:
+        raise RuntimeError("ANNOUNCEMENT_CHANNEL_ID is required when FEED_ENABLED=true")
 
 
 # Recognition 정책
 DAILY_LIMIT: int = int(os.getenv("DAILY_LIMIT", "5"))
 FEED_ENABLED: bool = parse_enabled_flag(os.getenv("FEED_ENABLED", "true"))
-FEED_CHANNEL_ID: str = os.getenv("FEED_CHANNEL_ID", "")
+ANNOUNCEMENT_CHANNEL_ID: str = os.getenv("ANNOUNCEMENT_CHANNEL_ID", "")
 ADMIN_USER_IDS: frozenset[str] = parse_admin_user_ids(os.getenv("ADMIN_USER_IDS", ""))
 SCHEDULER_ENABLED: bool = parse_enabled_flag(os.getenv("SCHEDULER_ENABLED", "false"))
 HEALTH_CHECK_ENABLED: bool = parse_enabled_flag(os.getenv("HEALTH_CHECK_ENABLED", "false"))
 HEALTH_CHECK_PORT: int = int(os.getenv("HEALTH_CHECK_PORT", "8000"))
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
-validate_feed_config(FEED_ENABLED, FEED_CHANNEL_ID)
+validate_feed_config(FEED_ENABLED, ANNOUNCEMENT_CHANNEL_ID)
 
 # 표현 레이어 (코드에 하드코딩 금지, 항상 이 변수 사용)
 RECOGNITION_EMOJI: str = os.getenv("RECOGNITION_EMOJI", "☕")

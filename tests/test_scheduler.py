@@ -7,7 +7,7 @@ from unittest.mock import patch
 os.environ.setdefault("SLACK_BOT_TOKEN", "xoxb-test")
 os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test")
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
-os.environ.setdefault("FEED_CHANNEL_ID", "C123")
+os.environ.setdefault("ANNOUNCEMENT_CHANNEL_ID", "C123")
 
 from services.stats import (  # noqa: E402
     get_current_month_range,
@@ -25,20 +25,26 @@ class ScheduledSummaryLockTest(unittest.TestCase):
     def test_lock_success_posts_summary_and_releases_lock(self):
         conn = FakeConnection()
         client = object()
+        summary_blocks = [{"type": "header", "text": {"type": "plain_text", "text": "weekly"}}]
+        leaderboard_blocks = [{"type": "header", "text": {"type": "plain_text", "text": "leaderboard"}}]
 
         with patch.object(scheduler, "get_connection", return_value=conn), \
             patch.object(scheduler, "try_summary_lock", return_value=True) as try_summary_lock, \
             patch.object(scheduler, "release_summary_lock") as release_summary_lock, \
             patch.object(scheduler, "get_previous_week_range", return_value=("start", "end")), \
             patch.object(scheduler, "load_weekly_stats", return_value={"total_recognitions": 0}) as load_weekly_stats, \
-            patch.object(scheduler, "build_weekly_summary", return_value="weekly summary"), \
-            patch.object(scheduler, "post_summary") as post_summary, \
+            patch.object(scheduler, "build_weekly_summary", return_value=summary_blocks), \
+            patch.object(scheduler, "build_leaderboard_blocks", return_value=leaderboard_blocks) as build_leaderboard_blocks, \
+            patch.object(scheduler, "post_summary", return_value="123.456") as post_summary, \
+            patch.object(scheduler, "notify_admins_with_blocks") as notify_admins_with_blocks, \
             patch.object(scheduler, "release_connection") as release_connection:
             scheduler.run_weekly_summary(client)
 
         try_summary_lock.assert_called_once_with(conn, "weekly")
         load_weekly_stats.assert_called_once_with(conn, "start", "end")
-        post_summary.assert_called_once_with(client, "weekly summary")
+        post_summary.assert_called_once_with(client, summary_blocks)
+        build_leaderboard_blocks.assert_called_once_with({"total_recognitions": 0})
+        notify_admins_with_blocks.assert_called_once_with(client, leaderboard_blocks)
         release_summary_lock.assert_called_once_with(conn, "weekly")
         release_connection.assert_called_once_with(conn)
 

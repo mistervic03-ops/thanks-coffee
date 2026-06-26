@@ -6,7 +6,7 @@ from unittest.mock import patch
 os.environ.setdefault("SLACK_BOT_TOKEN", "xoxb-test")
 os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test")
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
-os.environ.setdefault("FEED_CHANNEL_ID", "C123")
+os.environ.setdefault("ANNOUNCEMENT_CHANNEL_ID", "C123")
 os.environ.setdefault("RECOGNITION_EMOJI", "☕")
 os.environ.setdefault("RECOGNITION_UNIT", "커피")
 

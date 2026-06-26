@@ -13,10 +13,12 @@ from handlers.thanks import (
     get_user_display_name,
 )
 from lifecycle import tracked_handler
+from logger import get_logger
 
 
 HOME_RECEIVED_LIMIT = 5
 HOME_SENT_LIMIT = 5
+logger = get_logger(__name__)
 
 
 def register(app):
@@ -26,12 +28,18 @@ def register(app):
         if event.get("tab") and event["tab"] != "home":
             return
 
-        user_id = event["user"]
-        try:
-            view = build_home_view_for_user(client, user_id)
-            client.views_publish(user_id=user_id, view=view)
-        except Exception:
-            pass
+        refresh_home(client, event["user"])
+
+
+def refresh_home(client, user_id):
+    try:
+        view = build_home_view_for_user(client, user_id)
+        client.views_publish(user_id=user_id, view=view)
+    except Exception:
+        logger.warning(
+            "",
+            extra={"event": "home_refresh_failed", "detail": user_id},
+        )
 
 
 def build_home_view_for_user(client, user_id):

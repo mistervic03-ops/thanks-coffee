@@ -6,7 +6,7 @@ from unittest.mock import patch
 os.environ.setdefault("SLACK_BOT_TOKEN", "xoxb-test")
 os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test")
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
-os.environ.setdefault("FEED_CHANNEL_ID", "C123")
+os.environ.setdefault("ANNOUNCEMENT_CHANNEL_ID", "C123")
 
 import services.admin as admin  # noqa: E402
 
@@ -88,6 +88,28 @@ class AdminServiceTest(unittest.TestCase):
             {"U1", "U2"},
         )
         self.assertEqual({message["text"] for message in client.messages}, {"hello"})
+
+    def test_notify_admins_with_blocks_sends_block_dm_to_each_cached_admin(self):
+        client = FakeClient()
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "📋 관리자용 상세 현황"},
+            }
+        ]
+        admin._admin_user_ids = frozenset({"U1", "U2"})
+
+        admin.notify_admins_with_blocks(client, blocks)
+
+        self.assertEqual(
+            {message["channel"] for message in client.messages},
+            {"U1", "U2"},
+        )
+        self.assertEqual(
+            {message["text"] for message in client.messages},
+            {"📋 관리자용 상세 현황"},
+        )
+        self.assertTrue(all(message["blocks"] == blocks for message in client.messages))
 
     def test_notify_admins_logs_when_no_admins_configured(self):
         client = FakeClient()
