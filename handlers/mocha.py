@@ -150,12 +150,22 @@ def handle_pin_command(client, body):
             text="☕ 모카(Mocha) 감사 봇입니다.",
             blocks=build_pin_intro_blocks(),
         )
+    except Exception:
+        logger.warning("", extra={"event": "pin_post_failed"})
+        post_ephemeral(client, body, "소개 메시지 게시에 실패했습니다.")
+        return
+
+    try:
         client.conversations_pin(
             channel=ANNOUNCEMENT_CHANNEL_ID,
             timestamp=response["ts"],
         )
-    except Exception:
-        post_ephemeral(client, body, "소개 메시지 게시에 실패했습니다.")
+    except Exception as exc:
+        logger.warning(
+            "",
+            extra={"event": "pin_failed", "detail": _exception_detail(exc)},
+        )
+        post_ephemeral(client, body, "메시지는 게시됐지만 pin에 실패했습니다.")
         return
 
     post_ephemeral(client, body, "소개 메시지를 게시하고 pin했습니다.")

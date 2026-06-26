@@ -244,6 +244,10 @@ class MochaCommandTest(unittest.TestCase):
         result["ack"].assert_called_once()
         self.assertEqual(result["client"].posted_messages, [])
         self.assertEqual(result["client"].pinned_messages, [])
+        result["warning_log"].assert_called_once_with(
+            "",
+            extra={"event": "pin_post_failed"},
+        )
         self.assertEqual(
             result["client"].ephemeral_messages[0]["text"],
             "소개 메시지 게시에 실패했습니다.",
@@ -255,9 +259,14 @@ class MochaCommandTest(unittest.TestCase):
         result["ack"].assert_called_once()
         self.assertEqual(len(result["client"].posted_messages), 1)
         self.assertEqual(result["client"].pinned_messages, [])
+        result["warning_log"].assert_called_once()
+        self.assertEqual(
+            result["warning_log"].call_args.kwargs["extra"],
+            {"event": "pin_failed", "detail": "pin failed"},
+        )
         self.assertEqual(
             result["client"].ephemeral_messages[0]["text"],
-            "소개 메시지 게시에 실패했습니다.",
+            "메시지는 게시됐지만 pin에 실패했습니다.",
         )
 
     def test_mocha_pin_rejects_non_admin(self):
