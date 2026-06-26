@@ -38,6 +38,13 @@ def init_admin_cache(client):
     global _admin_client, _admin_user_ids
     _admin_client = client
     _admin_user_ids = get_admin_user_ids(client)
+    logger.info(
+        "",
+        extra={
+            "event": "admin_cache_initialized",
+            "detail": f"{len(_admin_user_ids)} admins",
+        },
+    )
 
 
 def is_admin(user_id):

@@ -50,6 +50,7 @@
 | ARCHITECTURE.md | ./docs/ARCHITECTURE.md | 구조, 흐름, DB 스키마 확인할 때 |
 | SLACK_SETUP.md | ./docs/SLACK_SETUP.md | Slack App 설정, 환경변수 확인할 때 |
 | OPERATIONS.md | ./docs/OPERATIONS.md | 운영 정책, 스케줄, 장애 대응 확인할 때 |
+| ADMIN.md | ./docs/ADMIN.md | 비개발자 관리자용 운영 절차를 확인할 때 |
 
 ## 4. 아키텍처 요약
 
@@ -70,7 +71,7 @@
 - `services/`: 비즈니스 로직을 담당한다. feed 채널 게시용 Slack API 호출은 `services/feed.py`에만 둔다. ephemeral 응답, App Home 갱신, 사용자 정보 조회처럼 handler 문맥이 필요한 Slack API 호출은 handler에서 수행할 수 있다.
 - `db/queries.py`: SQL을 직접 작성한다. ORM을 사용하지 않는다.
 - `config.py`: 환경변수의 단일 진입점이다. 다른 파일에서 `os.environ`에 직접 접근하지 않는다.
-- `scheduler.py`: 주간/월간 자동 요약 스케줄만 담당한다.
+- `scheduler.py`: 주간/월간 자동 요약과 feed 재시도 스케줄만 담당한다.
 
 ## 5. Key Decisions
 
@@ -90,7 +91,7 @@
 ## 6. Slack manifest commands
 
 - `/thanks`: 팀원에게 감사를 전하거나 내 상태를 조회한다. 예: `/thanks @팀원 감사합니다`, `/thanks @팀원 3 감사합니다`, `/thanks ☕☕☕ @팀원 감사합니다`, `/thanks @팀원 ☕☕☕ 감사합니다`, `/thanks status`, `/thanks help`
-- `/mocha`: 관리자 전용 운영 명령어다. `delete {recognition_id}`로 잘못 입력된 recognition을 삭제하고, `summary weekly`, `summary monthly`, `summary weekly preview`, `summary monthly preview`, `summary this-month preview`로 요약을 게시하거나 미리 본다.
+- `/mocha`: 관리자 전용 운영 명령어다. `delete {recognition_id}`로 잘못 입력된 recognition을 삭제하고, `summary weekly`, `summary monthly`, `summary weekly preview`, `summary monthly preview`, `summary this-month preview`로 요약을 게시하거나 미리 본다. `pin`으로 전사 공지 채널에 봇 소개 메시지를 게시하고 pin한다.
 
 ## 7. 문서 업데이트 규칙
 

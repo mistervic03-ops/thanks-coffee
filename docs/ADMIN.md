@@ -40,13 +40,13 @@
 확인할 것:
 
 - 삭제하려면 recognition ID가 필요하다.
-- Slack 공지 채널에 올라온 메시지에서는 recognition ID를 확인할 수 없다.
-- recognition ID는 DB 조회로 확인해야 한다.
+- Slack 공지 채널에 올라온 메시지 하단의 `#123` 형태가 recognition ID다.
+- 공지 채널 메시지가 없거나 삭제된 경우에는 DB 조회가 필요하다.
 - 구체적인 DB 조회 방법은 `docs/OPERATIONS.md`의 삭제 운영 절차를 참고한다.
 
 행동:
 
-1. DB에서 삭제할 recognition ID를 확인한다.
+1. Slack 공지 채널 메시지 하단에서 recognition ID를 확인한다. 메시지가 없으면 DB에서 확인한다.
 2. Slack에서 아래 명령어를 실행한다.
 
 ```text
@@ -93,7 +93,8 @@ tail -f mocha.log
 - 모카 봇이 전사 공지 채널에 초대되어 있는지 확인한다.
 - 로그에서 `feed_post_failed`가 있는지 확인한다.
 - feed 게시에는 자동 재시도가 있다. 바로 실패로 판단하지 말고 잠시 기다려도 된다.
-- 자동 재시도는 최대 3회, 10분 간격으로 실행된다.
+- 봇이 다시 시작될 때 실패한 feed 게시를 한 번 재시도한다.
+- 자동 스케줄러가 켜져 있으면 최대 3회까지 10분 간격으로 재시도한다.
 - 3회 모두 실패하면 관리자에게 DM 알림이 온다.
 
 행동:
@@ -119,29 +120,33 @@ tail -f mocha.log
 |---------|-------------|
 | `[mocha] 봇이 시작되었습니다.` | 정상 알림이다. 봇이 시작되었거나 재시작된 것이다. |
 | `[mocha] DB 연결에 실패했습니다.` | DB 서버 상태 확인이 필요하다. DB가 켜져 있는지, 연결 주소가 맞는지 확인한다. |
-| `[mocha] feed 게시가 3회 재시도 후 포기되었습니다.` | 해당 칭찬은 기록됐지만 공지 채널에는 올라가지 않은 상태다. 필요하면 관리자가 수동으로 공지 채널에 올려도 된다. |
+| `[mocha] feed 게시가 3회 재시도 후 포기되었습니다. recognition_id: 123` | 해당 칭찬은 기록됐지만 공지 채널에는 올라가지 않은 상태다. 필요하면 관리자가 수동으로 공지 채널에 올려도 된다. |
 | `[mocha] 처리되지 않은 예외가 발생했습니다.` | 개발자에게 로그를 전달해야 한다. `mocha.log`에서 같은 시간대의 내용을 함께 전달한다. |
 
 ## 4. 봇 시작 / 재시작 방법
 
-서버에 접속한 뒤 아래 순서로 실행한다.
+재시작:
 
 ```bash
-cd /home/bigxdata/mocha-recognition
-source venv/bin/activate
-python app.py
+sudo systemctl restart mocha
 ```
 
-백그라운드로 실행하려면 아래 명령어를 사용한다.
+상태 확인:
 
 ```bash
-nohup python app.py > mocha.log 2>&1 &
+sudo systemctl status mocha
 ```
 
-로그를 확인하려면 아래 명령어를 사용한다.
+로그 확인:
 
 ```bash
-tail -f mocha.log
+journalctl -u mocha -f
+```
+
+정상 시작 시 아래 로그가 찍힌다.
+
+```json
+{"event": "app_starting"}
 ```
 
 ## 5. 처음 세팅할 때 (신규 관리자 인수인계용)

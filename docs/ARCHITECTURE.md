@@ -4,6 +4,8 @@
 
 기본 실행 경로는 Slack Bolt Socket Mode와 PostgreSQL 중심이다. FastAPI health check는 optional component이며, `HEALTH_CHECK_ENABLED=true`일 때만 같은 프로세스 안에서 HTTP 서버를 함께 실행한다. health check 서버 포트는 `HEALTH_CHECK_PORT`로 설정하며 기본값은 `8000`이다.
 
+`app.py` 시작 순서는 Bolt app 생성, 관리자 캐시 초기화, 시작 DM 발송, DB 초기화, optional scheduler 시작, optional health check daemon thread 시작, 앱 시작 시 feed 재시도, `SocketModeHandler.start()` 순서다. Bolt Socket Mode는 별도 스레드로 감싸지 않고 메인 실행 흐름에서 시작한다.
+
 ## 2. Slash command 처리 흐름
 
 `handlers/thanks.py`가 `/thanks` command를 받으면 `ack()`를 즉시 호출한 뒤 service layer에 처리를 위임한다.
@@ -20,7 +22,7 @@
 
 1. 도움말, status, received 요청이면 해당 ephemeral message로 바로 응답한다.
 2. `services/recognition.py`에서 command text를 파싱한다.
-3. handler가 Slack `users.info`로 receiver가 봇 계정인지 확인하고, 봇이면 ephemeral 에러를 응답한다.
+3. handler가 Slack `users.info`로 receiver가 봇 계정이거나 비활성화된 사용자(`deleted=true`)인지 확인하고, 해당하면 ephemeral 에러를 응답한다.
 4. Slack 요청에서 추출한 idempotency key로 중복 요청인지 먼저 확인한다.
 5. 중복이 아니면 sender의 daily limit을 확인한다.
 6. `recognition` 테이블에 감사 기록을 저장하고 commit한다.
@@ -40,7 +42,7 @@ Idempotency key 후보는 Socket Mode envelope id, Slack request id, `trigger_id
 - 이모지 수량은 `/thanks ☕☕☕ @팀원 메시지` 또는 `/thanks @팀원 ☕☕☕ 메시지` 형식으로 받으며, 실제 이모지는 `RECOGNITION_EMOJI` 설정값을 사용한다.
 - 이모지 수량과 숫자 수량을 동시에 사용하면 파싱 에러로 처리한다.
 - 사용자가 보는 입력은 `@팀원`이지만, 앱 내부 parser는 Slack이 변환한 `<@USER_ID>` payload를 처리한다. 따라서 Slack manifest의 slash command `should_escape`는 `true`여야 한다.
-- receiver가 봇 계정인지 확인하는 Slack API 호출은 `client`를 이미 갖고 있는 handler에서 수행해 parser는 Slack 의존성 없이 유지한다.
+- receiver가 봇 계정인지, 비활성화된 사용자인지 확인하는 Slack API 호출은 `client`를 이미 갖고 있는 handler에서 수행해 parser는 Slack 의존성 없이 유지한다. 조회에 실패하면 경고 로그(`receiver_status_check_failed`)를 남기고 생성 흐름은 계속 진행한다.
 
 ## 3. Service layer 역할
 
@@ -87,12 +89,14 @@ DB 연결은 `psycopg2.pool.ThreadedConnectionPool`을 사용한다. `init_db()`
 
 - 전사 공지 채널은 `ANNOUNCEMENT_CHANNEL_ID`를 사용한다.
 - feed 메시지의 이모지와 단위 명칭은 `RECOGNITION_EMOJI`, `RECOGNITION_UNIT`을 사용한다.
+- feed 메시지 하단 context에는 receiver의 누적 수신량과 `#recognition_id`를 함께 표시한다. 운영자는 이 ID로 `/mocha delete {recognition_id}`를 실행할 수 있다.
 - `FEED_ENABLED=false`이면 전사 공지 채널에는 게시하지 않고 recognition 저장만 수행한다.
-- feed 게시에 성공하면 Slack message `ts`를 `recognition.feed_message_ts`에 저장하고 `feed_post_status`를 `posted`로 바꾼다.
+- 신규 feed 게시에 성공하면 Slack message `ts`를 `recognition.feed_message_ts`에 저장하고 `feed_post_status`를 `posted`로 바꾼다.
 - feed 게시 실패는 `failed`, feed 비활성화는 `skipped`로 기록한다.
 - 앱 시작 시 `failed` 상태의 feed 게시를 한 번 재시도한다.
 - `SCHEDULER_ENABLED=true`이면 `failed` 상태의 feed 게시를 10분마다 재시도한다.
-- 재시도에 성공하면 `posted`로 바꾸고, 실패하면 `retry_count`를 1 올린다.
+- 재시도에 성공하면 `posted`로 바꾸고 `feed_posted_at`을 갱신한다. 현재 retry 게시의 Slack message `ts`는 DB에 저장하지 않는다.
+- 재시도에 실패하면 `retry_count`를 1 올린다.
 - `retry_count`가 3에 도달하면 `abandoned`로 바꾸고 더 이상 자동 재시도하지 않는다.
 
 ## 8. Scheduler 동작 방식
@@ -121,5 +125,5 @@ Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APSchedul
 - 수동 요약을 전사 공지 채널에 게시하면 실행한 운영자에게 관리자용 상세 현황 Block Kit ephemeral message를 추가로 보낸다.
 - `preview`가 붙으면 전사 공지 채널에 게시하지 않고 실행한 운영자에게 ephemeral message로만 보여준다.
 - `/mocha summary this-month preview`는 이번 달 1일부터 현재 날짜까지 집계하며 feed 게시 기능은 없다.
-- `/mocha delete {recognition_id}`는 잘못 입력된 단일 recognition을 DB에서 삭제한다. 기존 feed 메시지가 있으면 Slack `chat_delete`로 함께 삭제하며, feed 삭제가 실패해도 DB 삭제는 유지하고 `feed_delete_failed` warning 로그를 남긴다.
-- `/mocha pin`은 전사 공지 채널에 봇 소개 Block Kit 메시지를 게시하고 Slack `conversations.pin`으로 pin한다.
+- `/mocha delete {recognition_id}`는 잘못 입력된 단일 recognition을 DB에서 삭제한다. `feed_channel_id`와 `feed_message_ts`가 저장된 feed 메시지가 있으면 Slack `chat_delete`로 함께 삭제하며, feed 삭제가 실패해도 DB 삭제는 유지하고 `feed_delete_failed` warning 로그를 남긴다.
+- `/mocha pin`은 전사 공지 채널에 봇 소개 Block Kit 메시지를 게시하고 Slack `pins.add` API로 pin한다. 게시 실패는 `pin_post_failed`, pin 실패는 `pin_failed` warning 로그로 구분한다.

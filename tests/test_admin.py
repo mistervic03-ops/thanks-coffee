@@ -77,6 +77,32 @@ class AdminServiceTest(unittest.TestCase):
             )
         )
 
+    def test_init_admin_cache_logs_admin_count(self):
+        client = FakeClient(
+            [
+                {
+                    "members": [
+                        {"id": "USLACKADMIN", "is_admin": True},
+                        {"id": "USLACKOWNER", "is_owner": True},
+                    ],
+                    "response_metadata": {},
+                }
+            ]
+        )
+
+        with patch.object(admin, "ADMIN_USER_IDS", frozenset({"UALLOW"})), \
+            patch.object(admin.logger, "info") as info_log:
+            admin.init_admin_cache(client)
+
+        self.assertEqual(
+            admin._admin_user_ids,
+            frozenset({"UALLOW", "USLACKADMIN", "USLACKOWNER"}),
+        )
+        info_log.assert_called_once_with(
+            "",
+            extra={"event": "admin_cache_initialized", "detail": "3 admins"},
+        )
+
     def test_notify_admins_sends_dm_to_each_cached_admin(self):
         client = FakeClient()
         admin._admin_user_ids = frozenset({"U1", "U2"})

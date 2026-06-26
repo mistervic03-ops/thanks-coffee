@@ -19,7 +19,7 @@
 - Slack App Home에서 오늘 남은 수량, 나의 받은/보낸 감사 요약, 최근 받은 감사 메시지, 최근 보낸 감사 메시지, 핵심 사용 예시를 읽기 전용으로 확인한다.
 - `/thanks status`와 `/thanks received`는 직접 입력 가능한 보조 조회 명령어로 유지하지만 일반 사용자 안내에서는 숨긴다.
 - `/thanks help`와 `/mocha help`로 Slack 안에서 사용법을 확인할 수 있다.
-- feed 게시, 주간/월간 요약 게시, 관리자용 상세 현황 전달, 기본 집계를 MVP 범위로 둔다.
+- feed 게시, 주간/월간 요약 게시, 관리자용 상세 현황 전달, 기본 집계를 MVP 범위로 둔다. feed 메시지 하단에는 관리자가 삭제 요청 때 바로 확인할 수 있도록 recognition ID를 `#123` 형태로 표시한다.
 - 운영자는 잘못 입력된 단일 recognition을 `/mocha delete {recognition_id}`로 삭제할 수 있다.
 - 운영자는 `/mocha pin`으로 전사 공지 채널에 봇 소개 메시지를 게시하고 pin할 수 있다.
 

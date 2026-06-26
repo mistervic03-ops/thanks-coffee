@@ -24,6 +24,7 @@ class FeedPostTest(unittest.TestCase):
     def test_post_to_feed_uses_blocks_with_fallback_text(self):
         client = FakeClient()
         result = SimpleNamespace(
+            recognition_id=42,
             receiver_id="U456",
             message="빠른 리뷰 고마워요",
             total_received=7,
@@ -39,13 +40,13 @@ class FeedPostTest(unittest.TestCase):
         )
         self.assertEqual(
             client.messages[0]["blocks"],
-            build_feed_blocks("U123", "U456", "빠른 리뷰 고마워요", 7),
+            build_feed_blocks("U123", "U456", "빠른 리뷰 고마워요", 7, 42),
         )
 
 
 class FeedBlockBuilderTest(unittest.TestCase):
     def test_build_feed_blocks_keeps_existing_message_copy(self):
-        blocks = build_feed_blocks("U123", "U456", "고마워요", 1)
+        blocks = build_feed_blocks("U123", "U456", "고마워요", 1, 42)
 
         self.assertEqual(blocks[0]["type"], "section")
         self.assertEqual(
@@ -55,7 +56,7 @@ class FeedBlockBuilderTest(unittest.TestCase):
         self.assertEqual(blocks[1]["text"]["text"], "> \"고마워요\"")
         self.assertEqual(
             blocks[2]["elements"][0]["text"],
-            "<@U456>님이 지금까지 받은 커피: 한 잔",
+            "<@U456>님이 지금까지 받은 커피: 한 잔  ·  #42",
         )
 
 

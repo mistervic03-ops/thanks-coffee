@@ -41,6 +41,7 @@ def retry_failed_feeds(app):
                         receiver_id=record["receiver_id"],
                         message=record["message"],
                         total_received=total_received,
+                        recognition_id=record["id"],
                     ),
                 )
                 mark_feed_posted(conn, record["id"])

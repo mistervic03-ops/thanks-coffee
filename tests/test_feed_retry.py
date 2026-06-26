@@ -98,6 +98,10 @@ class FeedRetryTest(unittest.TestCase):
         self.assertIn("blocks", app.client.messages[0])
         self.assertIn("<@U123>", app.client.messages[0]["blocks"][0]["text"]["text"])
         self.assertIn("<@U456>", app.client.messages[0]["blocks"][0]["text"]["text"])
+        self.assertEqual(
+            app.client.messages[0]["blocks"][2]["elements"][0]["text"],
+            "<@U456>님이 지금까지 받은 커피: 5잔  ·  #42",
+        )
 
     def test_retry_failure_increments_retry_count(self):
         conn = FakeConnection()

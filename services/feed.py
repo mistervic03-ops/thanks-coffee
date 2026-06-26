@@ -13,12 +13,13 @@ def post_to_feed(client, sender_id, result):
             receiver_id=result.receiver_id,
             message=result.message,
             total_received=result.total_received,
+            recognition_id=result.recognition_id,
         ),
     )
     return response["ts"]
 
 
-def build_feed_blocks(sender_id, receiver_id, message, total_received):
+def build_feed_blocks(sender_id, receiver_id, message, total_received, recognition_id):
     return [
         {
             "type": "section",
@@ -41,7 +42,7 @@ def build_feed_blocks(sender_id, receiver_id, message, total_received):
                     "type": "mrkdwn",
                     "text": (
                         f"<@{receiver_id}>님이 지금까지 받은 {RECOGNITION_UNIT}: "
-                        f"{_format_count(total_received)}"
+                        f"{_format_count(total_received)}  ·  #{recognition_id}"
                     ),
                 }
             ],

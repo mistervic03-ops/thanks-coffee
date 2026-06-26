@@ -233,6 +233,10 @@ class MochaCommandTest(unittest.TestCase):
             result["client"].pinned_messages,
             [{"channel": "C123", "timestamp": "123.456"}],
         )
+        result["info_log"].assert_called_once_with(
+            "",
+            extra={"event": "pin_posted", "user_id": "UADMIN"},
+        )
         self.assertEqual(
             result["client"].ephemeral_messages[0]["text"],
             "소개 메시지를 게시하고 pin했습니다.",

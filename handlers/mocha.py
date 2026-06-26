@@ -168,6 +168,7 @@ def handle_pin_command(client, body):
         post_ephemeral(client, body, "메시지는 게시됐지만 pin에 실패했습니다.")
         return
 
+    logger.info("", extra={"event": "pin_posted", "user_id": body["user_id"]})
     post_ephemeral(client, body, "소개 메시지를 게시하고 pin했습니다.")
 
 
