@@ -15,6 +15,7 @@ from services.stats import (  # noqa: E402
     get_previous_week_range,
 )
 import handlers.stats as summary_handler  # noqa: E402
+import scheduler  # noqa: E402
 
 
 class FakeApp:
@@ -43,6 +44,64 @@ class FakeConnection:
 
     def close(self):
         self.closed = True
+
+
+class ScheduledSummaryLockTest(unittest.TestCase):
+    def test_lock_success_posts_summary_and_releases_lock(self):
+        conn = FakeConnection()
+        client = object()
+
+        with patch.object(scheduler, "get_connection", return_value=conn), \
+            patch.object(scheduler, "try_summary_lock", return_value=True) as try_summary_lock, \
+            patch.object(scheduler, "release_summary_lock") as release_summary_lock, \
+            patch.object(scheduler, "get_previous_week_range", return_value=("start", "end")), \
+            patch.object(scheduler, "load_weekly_stats", return_value={"total_recognitions": 0}) as load_weekly_stats, \
+            patch.object(scheduler, "build_weekly_summary", return_value="weekly summary"), \
+            patch.object(scheduler, "post_summary") as post_summary:
+            scheduler.run_weekly_summary(client)
+
+        try_summary_lock.assert_called_once_with(conn, "weekly")
+        load_weekly_stats.assert_called_once_with(conn, "start", "end")
+        post_summary.assert_called_once_with(client, "weekly summary")
+        release_summary_lock.assert_called_once_with(conn, "weekly")
+        self.assertTrue(conn.closed)
+
+    def test_lock_failure_skips_summary_without_logging_or_posting(self):
+        conn = FakeConnection()
+        client = object()
+
+        with patch.object(scheduler, "get_connection", return_value=conn), \
+            patch.object(scheduler, "try_summary_lock", return_value=False) as try_summary_lock, \
+            patch.object(scheduler, "release_summary_lock") as release_summary_lock, \
+            patch.object(scheduler, "load_weekly_stats") as load_weekly_stats, \
+            patch.object(scheduler, "post_summary") as post_summary, \
+            patch.object(scheduler.logger, "info") as info_log, \
+            patch.object(scheduler.logger, "warning") as warning_log:
+            scheduler.run_weekly_summary(client)
+
+        try_summary_lock.assert_called_once_with(conn, "weekly")
+        load_weekly_stats.assert_not_called()
+        post_summary.assert_not_called()
+        release_summary_lock.assert_not_called()
+        info_log.assert_not_called()
+        warning_log.assert_not_called()
+        self.assertTrue(conn.closed)
+
+    def test_summary_failure_still_releases_lock(self):
+        conn = FakeConnection()
+        client = object()
+
+        with patch.object(scheduler, "get_connection", return_value=conn), \
+            patch.object(scheduler, "try_summary_lock", return_value=True), \
+            patch.object(scheduler, "release_summary_lock") as release_summary_lock, \
+            patch.object(scheduler, "get_previous_month", return_value=(2026, 6)), \
+            patch.object(scheduler, "load_monthly_stats", return_value={"total_recognitions": 0}), \
+            patch.object(scheduler, "build_monthly_summary", return_value="monthly summary"), \
+            patch.object(scheduler, "post_summary", side_effect=RuntimeError("slack failed")):
+            scheduler.run_monthly_summary(client)
+
+        release_summary_lock.assert_called_once_with(conn, "monthly")
+        self.assertTrue(conn.closed)
 
 
 class WeeklyRangeTest(unittest.TestCase):

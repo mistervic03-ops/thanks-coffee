@@ -65,8 +65,9 @@ App Home은 `/thanks status`의 `get_sent_today`, 개인 요약용 `get_personal
 `recognition` 테이블에 감사 기록과 feed 게시 메타데이터를 저장한다.
 
 - `idempotency_key`: Slack retry나 중복 delivery를 같은 요청으로 식별하기 위한 key다. nullable이지만 새 `/thanks` 요청은 항상 값을 넣는다.
-- `feed_post_status`: `pending`, `posted`, `failed`, `skipped` 중 하나로 feed 게시 상태를 추적한다.
+- `feed_post_status`: `pending`, `posted`, `failed`, `skipped`, `abandoned` 중 하나로 feed 게시 상태를 추적한다.
 - `feed_posted_at`: feed 게시 성공 시각이다.
+- `retry_count`: feed 게시 실패 후 자동 재시도 횟수다.
 
 ## 6. Daily limit 계산 방식
 
@@ -87,19 +88,25 @@ App Home은 `/thanks status`의 `get_sent_today`, 개인 요약용 `get_personal
 - `FEED_ENABLED=false`이면 feed 채널에는 게시하지 않고 recognition 저장만 수행한다.
 - feed 게시에 성공하면 Slack message `ts`를 `recognition.feed_message_ts`에 저장하고 `feed_post_status`를 `posted`로 바꾼다.
 - feed 게시 실패는 `failed`, feed 비활성화는 `skipped`로 기록한다.
+- 앱 시작 시 `failed` 상태의 feed 게시를 한 번 재시도한다.
+- `SCHEDULER_ENABLED=true`이면 `failed` 상태의 feed 게시를 10분마다 재시도한다.
+- 재시도에 성공하면 `posted`로 바꾸고, 실패하면 `retry_count`를 1 올린다.
+- `retry_count`가 3에 도달하면 `abandoned`로 바꾸고 더 이상 자동 재시도하지 않는다.
 
 ## 8. Scheduler 동작 방식
 
-Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APScheduler로 주간/월간 요약 게시를 예약한다. Scheduler가 꺼져 있어도 slash command 기반 `/summary weekly`, `/summary monthly` 흐름은 유지된다.
+Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APScheduler로 주간/월간 요약 게시와 feed 재시도를 예약한다. Scheduler가 꺼져 있어도 slash command 기반 `/summary weekly`, `/summary monthly` 흐름과 앱 시작 시 1회 feed 재시도는 유지된다.
 
-- `app.py`가 프로세스 시작 시 `SCHEDULER_ENABLED`를 확인하고, true이면 `start_scheduler(bolt_app.client)`를 호출한다.
+- `app.py`가 프로세스 시작 시 `SCHEDULER_ENABLED`를 확인하고, true이면 `start_scheduler(bolt_app)`를 호출한다.
 - 스케줄러는 `BackgroundScheduler`로 실행되며 Bolt Socket Mode 연결과 독립적으로 동작한다.
 - timezone은 명시적으로 `Asia/Seoul`을 사용한다.
 - 주간 요약은 매주 월요일 09:00 KST에 실행되며, 직전 월요일부터 직전 일요일까지의 recognition을 집계한다.
 - 월간 요약은 매월 1일 09:00 KST에 실행되며, 직전 월의 recognition을 집계한다.
+- feed 재시도는 10분마다 실행되며 `feed_post_status='failed'`이고 `retry_count < 3`인 recognition을 다시 게시한다.
 - 요약 집계는 `db/queries.py`, 메시지 생성은 `services/stats.py`, feed 채널 게시는 `services/feed.py`가 담당한다.
+- 자동 주간/월간 요약은 PostgreSQL advisory lock을 사용해 여러 프로세스에서 scheduler가 동시에 실행되어도 하나만 게시한다. lock 획득에 실패한 프로세스는 조용히 skip한다.
 - 요약 게시 실패나 Slack API 오류는 로그로 남기고 다음 스케줄 실행을 기다린다. 스케줄러 시작 실패도 Bolt 프로세스를 종료시키지 않는다.
-- Spark PoC에서는 기본값을 `SCHEDULER_ENABLED=false`로 둔다. 여러 프로세스에서 scheduler를 켜면 summary가 중복 게시될 수 있으며, 이번 PoC 범위에는 summary 분산락을 포함하지 않는다.
+- Spark PoC에서는 기본값을 `SCHEDULER_ENABLED=false`로 둔다.
 
 ## 9. 수동 요약 게시
 

@@ -1,5 +1,3 @@
-import logging
-
 from config import DAILY_LIMIT, RECOGNITION_EMOJI, RECOGNITION_UNIT
 from db.queries import (
     get_connection,
@@ -13,15 +11,16 @@ from handlers.thanks import (
     _format_recognition_date,
     get_user_display_name,
 )
+from lifecycle import tracked_handler
 
 
-logger = logging.getLogger(__name__)
 HOME_RECEIVED_LIMIT = 5
 HOME_SENT_LIMIT = 5
 
 
 def register(app):
     @app.event("app_home_opened")
+    @tracked_handler
     def handle_app_home_opened(event, client):
         if event.get("tab") and event["tab"] != "home":
             return
@@ -31,7 +30,7 @@ def register(app):
             view = build_home_view_for_user(client, user_id)
             client.views_publish(user_id=user_id, view=view)
         except Exception:
-            logger.exception("Failed to publish App Home for user_id=%s", user_id)
+            pass
 
 
 def build_home_view_for_user(client, user_id):

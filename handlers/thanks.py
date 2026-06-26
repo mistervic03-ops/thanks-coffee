@@ -1,4 +1,3 @@
-import logging
 from zoneinfo import ZoneInfo
 
 from slack_sdk.errors import SlackApiError
@@ -23,9 +22,11 @@ from services.recognition import (
     create_recognition,
     parse_thanks_text,
 )
+from lifecycle import tracked_handler
+from logger import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 RECEIVED_LIMIT = 10
 
@@ -46,6 +47,7 @@ def post_ephemeral(client, body, text):
 
 def register(app):
     @app.command("/thanks")
+    @tracked_handler
     def handle_thanks(ack, body, client, context=None):
         ack()
 
@@ -93,7 +95,6 @@ def register(app):
 
         idempotency_key = extract_idempotency_key(body, context)
         if not idempotency_key:
-            logger.error("Failed to extract idempotency key for /thanks body=%s", _safe_body(body))
             post_ephemeral(
                 client,
                 body,
@@ -112,8 +113,21 @@ def register(app):
                     idempotency_key=idempotency_key,
                 )
                 conn.commit()
+                if not result.is_duplicate:
+                    logger.info(
+                        "",
+                        extra={"event": "recognition_created", "user_id": sender_id},
+                    )
             except LimitError as exc:
                 conn.rollback()
+                logger.warning(
+                    "",
+                    extra={
+                        "event": "daily_limit_exceeded",
+                        "user_id": sender_id,
+                        "detail": f"requested={exc.requested} remaining={exc.remaining}",
+                    },
+                )
                 post_ephemeral(
                     client,
                     body,
@@ -138,27 +152,22 @@ def register(app):
                     else:
                         update_feed_status(conn, result.recognition_id, "skipped")
                     conn.commit()
-                except Exception:
+                    if feed_message_ts:
+                        logger.info("", extra={"event": "feed_posted", "user_id": sender_id})
+                except Exception as exc:
                     conn.rollback()
                     try:
                         update_feed_status(conn, result.recognition_id, "failed")
                         conn.commit()
                     except Exception:
                         conn.rollback()
-                        logger.exception(
-                            "Failed to record feed failure for recognition_id=%s",
-                            result.recognition_id,
-                        )
-
-                    logger.exception(
-                        (
-                            "Failed to post/update feed for recognition_id=%s "
-                            "idempotency_key=%s feed_channel_id=%s feed_message_ts=%s"
-                        ),
-                        result.recognition_id,
-                        idempotency_key,
-                        FEED_CHANNEL_ID,
-                        feed_message_ts,
+                    logger.warning(
+                        "",
+                        extra={
+                            "event": _feed_failure_event(exc),
+                            "user_id": sender_id,
+                            "detail": _exception_detail(exc),
+                        },
                     )
                     post_ephemeral(
                         client,
@@ -319,15 +328,22 @@ def _get_context_value(context, key):
     return None
 
 
-def _safe_body(body):
-    return {
-        key: body.get(key)
-        for key in (
-            "team_id",
-            "channel_id",
-            "user_id",
-            "command",
-            "text",
-            "trigger_id",
-        )
-    }
+def _feed_failure_event(exc):
+    if _is_slack_rate_limited(exc):
+        return "slack_rate_limited"
+
+    return "feed_post_failed"
+
+
+def _is_slack_rate_limited(exc):
+    if not isinstance(exc, SlackApiError):
+        return False
+
+    return exc.response.status_code == 429 or exc.response.get("error") == "ratelimited"
+
+
+def _exception_detail(exc):
+    if isinstance(exc, SlackApiError):
+        return exc.response.get("error") or str(exc)
+
+    return str(exc)

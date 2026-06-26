@@ -1,37 +1,105 @@
 import hashlib
 import os
 import psycopg2
+import threading
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from config import DATABASE_URL
+from logger import get_logger
 
 
 KST = ZoneInfo("Asia/Seoul")
+logger = get_logger(__name__)
+_connections = []
+_connections_lock = threading.Lock()
 
 
 def get_connection():
-    return psycopg2.connect(DATABASE_URL)
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+    except Exception as exc:
+        logger.error("", extra={"event": "db_connection_failed", "detail": str(exc)})
+        raise
+
+    with _connections_lock:
+        _connections.append(conn)
+    return conn
+
+
+def close_connection():
+    with _connections_lock:
+        connections = list(_connections)
+        _connections.clear()
+
+    for conn in connections:
+        if getattr(conn, "closed", False):
+            continue
+        conn.close()
 
 
 def init_db():
-    """migrations 디렉터리의 SQL 파일을 이름순으로 실행한다."""
+    """migrations 디렉터리의 SQL 파일을 이름순으로 한 번씩 실행한다."""
     migration_dir = os.path.join(os.path.dirname(__file__), "migrations")
     migration_paths = [
         os.path.join(migration_dir, filename)
         for filename in sorted(os.listdir(migration_dir))
         if filename.endswith(".sql")
     ]
-    conn = get_connection()
+    conn = None
     try:
+        conn = get_connection()
         with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    filename   TEXT PRIMARY KEY,
+                    applied_at TIMESTAMPTZ DEFAULT now()
+                )
+                """
+            )
             for migration_path in migration_paths:
-                with open(migration_path, "r") as f:
-                    cur.execute(f.read())
+                filename = os.path.basename(migration_path)
+                cur.execute(
+                    """
+                    SELECT 1
+                    FROM schema_migrations
+                    WHERE filename = %s
+                    """,
+                    (filename,),
+                )
+                if cur.fetchone():
+                    continue
+
+                try:
+                    with open(migration_path, "r") as f:
+                        cur.execute(f.read())
+                    cur.execute(
+                        """
+                        INSERT INTO schema_migrations (filename)
+                        VALUES (%s)
+                        """,
+                        (filename,),
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "",
+                        extra={
+                            "event": "migration_failed",
+                            "detail": f"{filename}: {exc}",
+                        },
+                    )
+                    raise
+
+                logger.info("", extra={"event": "migration_applied", "detail": filename})
         conn.commit()
-        print("DB initialized.")
+    except Exception:
+        if conn:
+            conn.rollback()
+        raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def get_sent_today(conn, sender_id):
@@ -62,6 +130,27 @@ def _daily_limit_lock_key(sender_id, kst_date):
         digest_size=8,
     ).digest()
     return int.from_bytes(digest, byteorder="big", signed=True)
+
+
+def _summary_lock_key(summary_type):
+    digest = hashlib.blake2b(
+        f"summary-scheduler:{summary_type}".encode("utf-8"),
+        digest_size=8,
+    ).digest()
+    return int.from_bytes(digest, byteorder="big", signed=True)
+
+
+def try_summary_lock(conn, summary_type):
+    lock_key = _summary_lock_key(summary_type)
+    with conn.cursor() as cur:
+        cur.execute("SELECT pg_try_advisory_lock(%s)", (lock_key,))
+        return cur.fetchone()[0]
+
+
+def release_summary_lock(conn, summary_type):
+    lock_key = _summary_lock_key(summary_type)
+    with conn.cursor() as cur:
+        cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
 
 
 def get_recognition_by_idempotency_key(conn, idempotency_key):
@@ -266,6 +355,73 @@ def update_feed_status(conn, recognition_id, feed_post_status):
             """,
             (feed_post_status, recognition_id),
         )
+
+
+def get_failed_feed_records(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                sender_id,
+                receiver_id,
+                message,
+                unit_count,
+                retry_count
+            FROM recognition
+            WHERE feed_post_status = 'failed'
+              AND retry_count < 3
+            ORDER BY created_at ASC, id ASC
+            """
+        )
+        return [
+            {
+                "id": recognition_id,
+                "sender_id": sender_id,
+                "receiver_id": receiver_id,
+                "message": message,
+                "unit_count": unit_count,
+                "retry_count": retry_count,
+            }
+            for recognition_id, sender_id, receiver_id, message, unit_count, retry_count
+            in cur.fetchall()
+        ]
+
+
+def mark_feed_posted(conn, recognition_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE recognition
+            SET feed_post_status = 'posted',
+                feed_posted_at = now()
+            WHERE id = %s
+            """,
+            (recognition_id,),
+        )
+
+
+def increment_retry_count(conn, recognition_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE recognition
+            SET retry_count = retry_count + 1,
+                feed_post_status = CASE
+                    WHEN retry_count + 1 >= 3 THEN 'abandoned'
+                    ELSE 'failed'
+                END
+            WHERE id = %s
+            RETURNING retry_count, feed_post_status
+            """,
+            (recognition_id,),
+        )
+        retry_count, feed_post_status = cur.fetchone()
+
+    return {
+        "retry_count": retry_count,
+        "feed_post_status": feed_post_status,
+    }
 
 
 def get_weekly_stats(conn, start_date, end_date):

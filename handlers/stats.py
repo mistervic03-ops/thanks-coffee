@@ -1,7 +1,9 @@
-import logging
+from slack_sdk.errors import SlackApiError
 
 from config import ADMIN_USER_IDS
 from db.queries import get_connection
+from lifecycle import tracked_handler
+from logger import get_logger
 from services.feed import post_summary
 from services.stats import (
     build_current_month_summary,
@@ -15,7 +17,7 @@ from services.stats import (
 )
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def post_ephemeral(client, body, text):
@@ -32,6 +34,7 @@ def is_summary_admin(user_id):
 
 def register(app):
     @app.command("/summary")
+    @tracked_handler
     def handle_summary(ack, body, client):
         ack()
 
@@ -62,8 +65,15 @@ def register(app):
                 return
 
             feed_message_ts = post_summary(client, summary_text)
-        except Exception:
-            logger.exception("Failed to post %s summary", summary_type)
+        except Exception as exc:
+            logger.warning(
+                "",
+                extra={
+                    "event": _feed_failure_event(exc),
+                    "user_id": body["user_id"],
+                    "detail": _exception_detail(exc),
+                },
+            )
             post_ephemeral(
                 client,
                 body,
@@ -72,6 +82,14 @@ def register(app):
             return
 
         if feed_message_ts:
+            logger.info(
+                "",
+                extra={
+                    "event": "summary_posted",
+                    "user_id": body["user_id"],
+                    "detail": summary_type,
+                },
+            )
             post_ephemeral(client, body, "✅ 모카 감사 요약을 feed 채널에 올렸어요.")
         else:
             post_ephemeral(
@@ -122,3 +140,24 @@ def _build_summary_text(summary_type):
         return build_monthly_summary(stats)
     finally:
         conn.close()
+
+
+def _feed_failure_event(exc):
+    if _is_slack_rate_limited(exc):
+        return "slack_rate_limited"
+
+    return "feed_post_failed"
+
+
+def _is_slack_rate_limited(exc):
+    if not isinstance(exc, SlackApiError):
+        return False
+
+    return exc.response.status_code == 429 or exc.response.get("error") == "ratelimited"
+
+
+def _exception_detail(exc):
+    if isinstance(exc, SlackApiError):
+        return exc.response.get("error") or str(exc)
+
+    return str(exc)
