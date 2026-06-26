@@ -50,14 +50,15 @@ Idempotency key 후보는 Socket Mode envelope id, Slack request id, `trigger_id
 
 `handlers/home.py`가 Slack `app_home_opened` event를 받으면 현재 사용자의 Home tab을 `views_publish`로 갱신한다.
 
-Home tab은 읽기 전용이며 다음 정보만 보여준다.
+Home tab은 읽기 전용이며 다음 정보를 보여준다.
 
 - 오늘 보낼 수 있는 남은 수량
+- 나의 받은/보낸 감사 요약
 - 최근 받은 감사 메시지
 - 최근 보낸 감사 메시지
 - 핵심 `/thanks` 사용 예시
 
-App Home은 `/thanks status`의 `get_sent_today`, `/thanks received`의 `get_recent_received_recognitions`, 최근 보낸 감사 조회용 `get_recent_sent_recognitions` query를 사용한다. leaderboard, badge, streak, reward, ranking 섹션은 만들지 않는다.
+App Home은 `/thanks status`의 `get_sent_today`, 개인 요약용 `get_personal_recognition_summary`, `/thanks received`의 `get_recent_received_recognitions`, 최근 보낸 감사 조회용 `get_recent_sent_recognitions` query를 사용한다. leaderboard, badge, streak, reward, ranking 섹션은 만들지 않는다.
 
 ## 5. DB 스키마
 

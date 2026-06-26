@@ -67,7 +67,7 @@
 ```
 
 - `handlers/`: Slack 이벤트를 수신하고 `ack`를 호출한다. Slack `client`를 service로 전달할 수 있지만 비즈니스 로직은 넣지 않는다.
-- `services/`: 비즈니스 로직을 담당한다. Slack API 호출은 `services/feed.py`에만 허용한다.
+- `services/`: 비즈니스 로직을 담당한다. feed 채널 게시용 Slack API 호출은 `services/feed.py`에만 둔다. ephemeral 응답, App Home 갱신, 사용자 정보 조회처럼 handler 문맥이 필요한 Slack API 호출은 handler에서 수행할 수 있다.
 - `db/queries.py`: SQL을 직접 작성한다. ORM을 사용하지 않는다.
 - `config.py`: 환경변수의 단일 진입점이다. 다른 파일에서 `os.environ`에 직접 접근하지 않는다.
 - `scheduler.py`: 주간/월간 자동 요약 스케줄만 담당한다.
