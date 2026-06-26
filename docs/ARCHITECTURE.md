@@ -69,6 +69,8 @@ App Home은 `/thanks status`의 `get_sent_today`, 개인 요약용 `get_personal
 - `feed_posted_at`: feed 게시 성공 시각이다.
 - `retry_count`: feed 게시 실패 후 자동 재시도 횟수다.
 
+DB 연결은 `psycopg2.pool.ThreadedConnectionPool`을 사용한다. `init_db()`가 앱 시작 시 `DB_POOL_MIN`, `DB_POOL_MAX`, `DATABASE_URL`로 pool을 초기화하고 migration을 실행한다. `get_connection()`으로 가져온 연결은 호출자가 작업 후 `release_connection(conn)`으로 반드시 pool에 반납한다. 앱 종료 시 `close_connection()`이 pool 전체를 닫는다.
+
 ## 6. Daily limit 계산 방식
 
 - `recognition.unit_count` 합산 기준으로 계산한다.
@@ -95,7 +97,7 @@ App Home은 `/thanks status`의 `get_sent_today`, 개인 요약용 `get_personal
 
 ## 8. Scheduler 동작 방식
 
-Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APScheduler로 주간/월간 요약 게시와 feed 재시도를 예약한다. Scheduler가 꺼져 있어도 slash command 기반 `/summary weekly`, `/summary monthly` 흐름과 앱 시작 시 1회 feed 재시도는 유지된다.
+Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APScheduler로 주간/월간 요약 게시와 feed 재시도를 예약한다. Scheduler가 꺼져 있어도 slash command 기반 `/mocha summary weekly`, `/mocha summary monthly` 흐름과 앱 시작 시 1회 feed 재시도는 유지된다.
 
 - `app.py`가 프로세스 시작 시 `SCHEDULER_ENABLED`를 확인하고, true이면 `start_scheduler(bolt_app)`를 호출한다.
 - 스케줄러는 `BackgroundScheduler`로 실행되며 Bolt Socket Mode 연결과 독립적으로 동작한다.
@@ -110,10 +112,11 @@ Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APSchedul
 
 ## 9. 수동 요약 게시
 
-`/summary weekly`, `/summary monthly`, `/summary weekly preview`, `/summary monthly preview`, `/summary this-month preview`는 `ADMIN_USER_IDS`에 포함된 Slack user만 실행할 수 있다.
+`/mocha summary weekly`, `/mocha summary monthly`, `/mocha summary weekly preview`, `/mocha summary monthly preview`, `/mocha summary this-month preview`, `/mocha delete {recognition_id}`는 `ADMIN_USER_IDS`에 포함된 Slack user 또는 Slack workspace Admin/Owner만 실행할 수 있다. 앱 시작 시 `services/admin.py`가 Slack `users_list()`로 workspace Admin/Owner를 한 번 조회해 캐싱한다.
 
-- `/summary` 또는 `/summary help`는 권한에 따라 ephemeral 도움말을 보여준다. 운영자는 실행 가능한 summary 명령어를 보고, 운영자가 아닌 사용자는 summary 명령어가 운영자 전용이라는 안내를 받는다.
+- `/mocha` 또는 `/mocha help`는 권한에 따라 ephemeral 도움말을 보여준다. 운영자는 실행 가능한 관리자 명령어를 보고, 운영자가 아닌 사용자는 관리자 전용이라는 안내를 받는다.
 - 수동 주간 요약은 자동 weekly summary와 동일하게 직전 월요일부터 직전 일요일까지의 recognition을 집계한다.
 - 수동 월간 요약은 자동 monthly summary와 동일하게 직전 월의 recognition을 집계한다.
 - `preview`가 붙으면 feed 채널에 게시하지 않고 실행한 운영자에게 ephemeral message로만 보여준다.
-- `/summary this-month preview`는 이번 달 1일부터 현재 날짜까지 집계하며 feed 게시 기능은 없다.
+- `/mocha summary this-month preview`는 이번 달 1일부터 현재 날짜까지 집계하며 feed 게시 기능은 없다.
+- `/mocha delete {recognition_id}`는 잘못 입력된 단일 recognition을 DB에서 삭제한다. 기존 feed 메시지가 있으면 Slack `chat_delete`로 함께 삭제하며, feed 삭제가 실패해도 DB 삭제는 유지하고 `feed_delete_failed` warning 로그를 남긴다.

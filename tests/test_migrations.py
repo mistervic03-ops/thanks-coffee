@@ -76,6 +76,8 @@ class MigrationRunnerTest(unittest.TestCase):
             (migration_dir / "002_second.sql").write_text("CREATE TABLE two (id INT);")
 
             with patch.object(queries, "__file__", str(db_dir / "queries.py")), \
+                patch.object(queries, "_init_connection_pool"), \
+                patch.object(queries, "release_connection") as release_connection, \
                 patch.object(queries, "get_connection", return_value=conn):
                 queries.init_db()
                 queries.init_db()
@@ -90,7 +92,8 @@ class MigrationRunnerTest(unittest.TestCase):
         self.assertEqual(conn.applied, {"001_init.sql", "002_second.sql"})
         self.assertEqual(conn.commits, 2)
         self.assertEqual(conn.rollbacks, 0)
-        self.assertTrue(conn.closed)
+        self.assertEqual(release_connection.call_count, 2)
+        release_connection.assert_called_with(conn)
 
 
 if __name__ == "__main__":

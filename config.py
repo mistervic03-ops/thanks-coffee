@@ -9,6 +9,8 @@ SLACK_APP_TOKEN: str = os.environ["SLACK_APP_TOKEN"]
 
 # DB
 DATABASE_URL: str = os.environ["DATABASE_URL"]
+DB_POOL_MIN: int = int(os.getenv("DB_POOL_MIN", "1"))
+DB_POOL_MAX: int = int(os.getenv("DB_POOL_MAX", "5"))
 
 
 def parse_admin_user_ids(value: str) -> frozenset[str]:

@@ -12,13 +12,14 @@ from config import (
     SLACK_APP_TOKEN,
     SLACK_BOT_TOKEN,
 )
-from db.queries import close_connection, get_connection, init_db
+from db.queries import close_connection, get_connection, init_db, release_connection
 from handlers.home import register as register_home
+from handlers.mocha import register as register_mocha
 from handlers.thanks import register as register_thanks
-from handlers.stats import register as register_stats
 from lifecycle import wait_for_requests
 from logger import configure_logging, get_logger
 from scheduler import start_scheduler
+from services.admin import init_admin_cache, notify_admins
 from services.feed_retry import retry_failed_feeds
 
 
@@ -48,7 +49,7 @@ def ready():
         raise HTTPException(status_code=503, detail="db_unavailable") from exc
     finally:
         if conn:
-            conn.close()
+            release_connection(conn)
 
     return {"status": "ready"}
 
@@ -62,7 +63,7 @@ def create_bolt_app():
     bolt_app = App(token=SLACK_BOT_TOKEN)
     register_home(bolt_app)
     register_thanks(bolt_app)
-    register_stats(bolt_app)
+    register_mocha(bolt_app)
     return bolt_app
 
 
@@ -111,8 +112,11 @@ def run_app():
     configure_logging()
     register_signal_handlers()
     logger.info("", extra={"event": "app_starting"})
+    bolt_app = None
     try:
         bolt_app = create_bolt_app()
+        init_admin_cache(bolt_app.client)
+        notify_admins(bolt_app.client, "[mocha] 봇이 시작되었습니다.")
         init_db()
         if SCHEDULER_ENABLED:
             scheduler_instance = start_scheduler(bolt_app)
@@ -124,7 +128,13 @@ def run_app():
     except KeyboardInterrupt:
         shutdown()
     except Exception as exc:
-        logger.error("", extra={"event": "unhandled_exception", "detail": str(exc)})
+        detail = str(exc)
+        logger.error("", extra={"event": "unhandled_exception", "detail": detail})
+        if bolt_app and not getattr(exc, "_admin_notified_event", None):
+            notify_admins(
+                bolt_app.client,
+                f"[mocha] 처리되지 않은 예외가 발생했습니다: {detail}",
+            )
         sys.exit(1)
     else:
         shutdown()

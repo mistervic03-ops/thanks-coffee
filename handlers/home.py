@@ -5,6 +5,7 @@ from db.queries import (
     get_recent_received_recognitions,
     get_recent_sent_recognitions,
     get_sent_today,
+    release_connection,
 )
 from handlers.thanks import (
     _format_count,
@@ -45,7 +46,7 @@ def build_home_view_for_user(client, user_id):
         )
         sent_recognitions = get_recent_sent_recognitions(conn, user_id, HOME_SENT_LIMIT)
     finally:
-        conn.close()
+        release_connection(conn)
 
     remaining = max(DAILY_LIMIT - sent_today, 0)
     return build_home_view(

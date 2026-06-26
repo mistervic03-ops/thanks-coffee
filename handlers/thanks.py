@@ -8,6 +8,7 @@ from db.queries import (
     get_recent_received_recognitions,
     get_sent_today,
     get_total_received,
+    release_connection,
     update_feed_status,
     update_feed_ts,
 )
@@ -177,7 +178,7 @@ def register(app):
                     return
 
         finally:
-            conn.close()
+            release_connection(conn)
 
         post_ephemeral(
             client,
@@ -196,7 +197,7 @@ def handle_status(client, body, user_id):
         sent_today = get_sent_today(conn, user_id)
         total_received = get_total_received(conn, user_id)
     finally:
-        conn.close()
+        release_connection(conn)
 
     remaining = max(DAILY_LIMIT - sent_today, 0)
     post_ephemeral(
@@ -215,7 +216,7 @@ def handle_received(client, body, user_id):
     try:
         recognitions = get_recent_received_recognitions(conn, user_id, RECEIVED_LIMIT)
     finally:
-        conn.close()
+        release_connection(conn)
 
     post_ephemeral(client, body, build_received_text(client, recognitions))
 

@@ -1,45 +1,73 @@
+from __future__ import annotations
+
 import hashlib
 import os
-import psycopg2
-import threading
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from config import DATABASE_URL
+from psycopg2.pool import ThreadedConnectionPool
+
+from config import DATABASE_URL, DB_POOL_MAX, DB_POOL_MIN
 from logger import get_logger
+from services.admin import notify_cached_admins
 
 
 KST = ZoneInfo("Asia/Seoul")
 logger = get_logger(__name__)
-_connections = []
-_connections_lock = threading.Lock()
+_pool: ThreadedConnectionPool | None = None
 
 
 def get_connection():
+    if _pool is None:
+        raise RuntimeError("DB connection pool is not initialized")
+
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        return _pool.getconn()
     except Exception as exc:
-        logger.error("", extra={"event": "db_connection_failed", "detail": str(exc)})
+        _handle_db_connection_failed(exc)
         raise
 
-    with _connections_lock:
-        _connections.append(conn)
-    return conn
+
+def release_connection(conn):
+    if _pool is None:
+        raise RuntimeError("DB connection pool is not initialized")
+
+    _pool.putconn(conn)
 
 
 def close_connection():
-    with _connections_lock:
-        connections = list(_connections)
-        _connections.clear()
+    global _pool
 
-    for conn in connections:
-        if getattr(conn, "closed", False):
-            continue
-        conn.close()
+    if _pool is None:
+        return
+
+    _pool.closeall()
+    _pool = None
+
+
+def _handle_db_connection_failed(exc):
+    detail = str(exc)
+    logger.error("", extra={"event": "db_connection_failed", "detail": detail})
+    notify_cached_admins(f"[mocha] DB 연결에 실패했습니다: {detail}")
+    setattr(exc, "_admin_notified_event", "db_connection_failed")
+
+
+def _init_connection_pool():
+    global _pool
+
+    if _pool is not None:
+        return
+
+    try:
+        _pool = ThreadedConnectionPool(DB_POOL_MIN, DB_POOL_MAX, DATABASE_URL)
+    except Exception as exc:
+        _handle_db_connection_failed(exc)
+        raise
 
 
 def init_db():
     """migrations 디렉터리의 SQL 파일을 이름순으로 한 번씩 실행한다."""
+    _init_connection_pool()
     migration_dir = os.path.join(os.path.dirname(__file__), "migrations")
     migration_paths = [
         os.path.join(migration_dir, filename)
@@ -99,7 +127,7 @@ def init_db():
         raise
     finally:
         if conn:
-            conn.close()
+            release_connection(conn)
 
 
 def get_sent_today(conn, sender_id):
@@ -180,6 +208,48 @@ def get_recognition_by_idempotency_key(conn, idempotency_key):
         "unit_count": row[3],
         "feed_post_status": row[4],
     }
+
+
+def get_recognition_by_id(conn, recognition_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                sender_id,
+                receiver_id,
+                message,
+                feed_channel_id,
+                feed_message_ts
+            FROM recognition
+            WHERE id = %s
+            """,
+            (recognition_id,),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "id": row[0],
+        "sender_id": row[1],
+        "receiver_id": row[2],
+        "message": row[3],
+        "feed_channel_id": row[4],
+        "feed_message_ts": row[5],
+    }
+
+
+def delete_recognition(conn, recognition_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM recognition
+            WHERE id = %s
+            """,
+            (recognition_id,),
+        )
 
 
 def insert_recognition(

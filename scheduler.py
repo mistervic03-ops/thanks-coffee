@@ -3,7 +3,12 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 from slack_sdk.errors import SlackApiError
 
-from db.queries import get_connection, release_summary_lock, try_summary_lock
+from db.queries import (
+    get_connection,
+    release_connection,
+    release_summary_lock,
+    try_summary_lock,
+)
 from logger import get_logger
 from services.feed_retry import retry_failed_feeds
 from services.feed import post_summary
@@ -100,7 +105,7 @@ def _run_locked_summary(client, summary_type, post_summary_func):
                     },
                 )
         if conn:
-            conn.close()
+            release_connection(conn)
 
 
 def _post_weekly_summary(conn, client):

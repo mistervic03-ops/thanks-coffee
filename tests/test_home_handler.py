@@ -215,7 +215,8 @@ class HomeEventHandlerTest(unittest.TestCase):
                 home_handler,
                 "get_recent_sent_recognitions",
                 return_value=sent_recognitions,
-            ) as get_recent_sent_recognitions:
+            ) as get_recent_sent_recognitions, \
+            patch.object(home_handler, "release_connection") as release_connection:
             app.events["app_home_opened"](
                 {"type": "app_home_opened", "user": "U123", "tab": "home"},
                 client,
@@ -226,7 +227,7 @@ class HomeEventHandlerTest(unittest.TestCase):
         get_personal_recognition_summary.assert_called_once_with(conn, "U123")
         get_recent_received_recognitions.assert_called_once_with(conn, "U123", 5)
         get_recent_sent_recognitions.assert_called_once_with(conn, "U123", 5)
-        self.assertTrue(conn.closed)
+        release_connection.assert_called_once_with(conn)
         self.assertEqual(len(client.published_views), 1)
         self.assertEqual(client.published_views[0]["user_id"], "U123")
 

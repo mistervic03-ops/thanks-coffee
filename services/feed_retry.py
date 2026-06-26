@@ -1,3 +1,5 @@
+from slack_sdk.errors import SlackApiError
+
 from config import FEED_CHANNEL_ID, FEED_ENABLED
 from db.queries import (
     get_connection,
@@ -5,8 +7,10 @@ from db.queries import (
     get_total_received,
     increment_retry_count,
     mark_feed_posted,
+    release_connection,
 )
 from logger import get_logger
+from services.admin import notify_admins
 from services.feed import build_feed_text
 
 
@@ -44,11 +48,16 @@ def retry_failed_feeds(app):
                         "user_id": record["sender_id"],
                     },
                 )
-            except Exception:
+            except Exception as exc:
                 conn.rollback()
                 result = increment_retry_count(conn, record["id"])
                 conn.commit()
                 if result["feed_post_status"] == "abandoned":
+                    notify_admins(
+                        app.client,
+                        "[mocha] feed 게시가 3회 재시도 후 포기되었습니다. "
+                        f"recognition_id: {record['id']}",
+                    )
                     logger.warning(
                         "",
                         extra={
@@ -60,10 +69,31 @@ def retry_failed_feeds(app):
                     logger.warning(
                         "",
                         extra={
-                            "event": "feed_retry_failed",
+                            "event": _feed_retry_failure_event(exc),
                             "user_id": record["sender_id"],
-                            "detail": f"retry_count={result['retry_count']}",
+                            "detail": _feed_retry_failure_detail(record, result, exc),
                         },
                     )
     finally:
-        conn.close()
+        release_connection(conn)
+
+
+def _feed_retry_failure_event(exc):
+    if _is_slack_rate_limited(exc):
+        return "slack_rate_limited"
+
+    return "feed_retry_failed"
+
+
+def _feed_retry_failure_detail(record, result, exc):
+    if _is_slack_rate_limited(exc):
+        return f"feed retry rate limited, recognition_id: {record['id']}"
+
+    return f"retry_count={result['retry_count']}"
+
+
+def _is_slack_rate_limited(exc):
+    if not isinstance(exc, SlackApiError):
+        return False
+
+    return exc.response.status_code == 429 or exc.response.get("error") == "ratelimited"

@@ -25,9 +25,10 @@ class FakeLogger:
 
 
 class FakeSocketModeHandler:
-    def __init__(self, raise_keyboard_interrupt=False):
+    def __init__(self, raise_keyboard_interrupt=False, error=None):
         self.closed = False
         self.raise_keyboard_interrupt = raise_keyboard_interrupt
+        self.error = error
 
     def close(self):
         self.closed = True
@@ -35,6 +36,8 @@ class FakeSocketModeHandler:
     def start(self):
         if self.raise_keyboard_interrupt:
             raise KeyboardInterrupt()
+        if self.error:
+            raise self.error
 
 
 class FakeScheduler:
@@ -43,6 +46,11 @@ class FakeScheduler:
 
     def shutdown(self, **kwargs):
         self.shutdown_calls.append(kwargs)
+
+
+class FakeBoltApp:
+    def __init__(self):
+        self.client = object()
 
 
 class ShutdownTest(unittest.TestCase):
@@ -88,10 +96,13 @@ class ShutdownTest(unittest.TestCase):
     def test_keyboard_interrupt_uses_same_shutdown_flow(self):
         fake_logger = FakeLogger()
         socket_handler = FakeSocketModeHandler(raise_keyboard_interrupt=True)
+        bolt_app = FakeBoltApp()
 
         with patch.object(app_module, "configure_logging"), \
             patch.object(app_module, "register_signal_handlers"), \
-            patch.object(app_module, "create_bolt_app", return_value=object()), \
+            patch.object(app_module, "create_bolt_app", return_value=bolt_app), \
+            patch.object(app_module, "init_admin_cache") as init_admin_cache, \
+            patch.object(app_module, "notify_admins") as notify_admins, \
             patch.object(app_module, "init_db"), \
             patch.object(app_module, "retry_failed_feeds"), \
             patch.object(app_module, "SocketModeHandler", return_value=socket_handler), \
@@ -105,8 +116,60 @@ class ShutdownTest(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, 0)
         self.assertTrue(socket_handler.closed)
+        init_admin_cache.assert_called_once_with(bolt_app.client)
+        notify_admins.assert_called_once_with(bolt_app.client, "[mocha] 봇이 시작되었습니다.")
         self.assertIn("app_shutdown_started", fake_logger.info_events)
         self.assertIn("app_shutdown", fake_logger.info_events)
+
+    def test_unhandled_exception_notifies_admins(self):
+        fake_logger = FakeLogger()
+        socket_handler = FakeSocketModeHandler(error=RuntimeError("boom"))
+        bolt_app = FakeBoltApp()
+
+        with patch.object(app_module, "configure_logging"), \
+            patch.object(app_module, "register_signal_handlers"), \
+            patch.object(app_module, "create_bolt_app", return_value=bolt_app), \
+            patch.object(app_module, "init_admin_cache"), \
+            patch.object(app_module, "notify_admins") as notify_admins, \
+            patch.object(app_module, "init_db"), \
+            patch.object(app_module, "retry_failed_feeds"), \
+            patch.object(app_module, "SocketModeHandler", return_value=socket_handler), \
+            patch.object(app_module, "SCHEDULER_ENABLED", False), \
+            patch.object(app_module, "HEALTH_CHECK_ENABLED", False), \
+            patch.object(app_module, "logger", fake_logger):
+            with self.assertRaises(SystemExit) as ctx:
+                app_module.run_app()
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("unhandled_exception", fake_logger.error_events)
+        notify_admins.assert_any_call(bolt_app.client, "[mocha] 봇이 시작되었습니다.")
+        notify_admins.assert_any_call(
+            bolt_app.client,
+            "[mocha] 처리되지 않은 예외가 발생했습니다: boom",
+        )
+
+    def test_db_failure_does_not_send_duplicate_unhandled_dm(self):
+        fake_logger = FakeLogger()
+        bolt_app = FakeBoltApp()
+        db_error = RuntimeError("db down")
+        db_error._admin_notified_event = "db_connection_failed"
+
+        with patch.object(app_module, "configure_logging"), \
+            patch.object(app_module, "register_signal_handlers"), \
+            patch.object(app_module, "create_bolt_app", return_value=bolt_app), \
+            patch.object(app_module, "init_admin_cache"), \
+            patch.object(app_module, "notify_admins") as notify_admins, \
+            patch.object(app_module, "init_db", side_effect=db_error), \
+            patch.object(app_module, "SCHEDULER_ENABLED", False), \
+            patch.object(app_module, "HEALTH_CHECK_ENABLED", False), \
+            patch.object(app_module, "logger", fake_logger):
+            with self.assertRaises(SystemExit) as ctx:
+                app_module.run_app()
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("unhandled_exception", fake_logger.error_events)
+        notify_admins.assert_any_call(bolt_app.client, "[mocha] 봇이 시작되었습니다.")
+        self.assertEqual(notify_admins.call_count, 1)
 
 
 if __name__ == "__main__":

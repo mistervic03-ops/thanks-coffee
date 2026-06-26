@@ -155,14 +155,15 @@ class ThanksReceivedCommandTest(unittest.TestCase):
                 "get_recent_received_recognitions",
                 return_value=recognitions,
             ) as get_recent_received_recognitions, \
-            patch.object(thanks_handler, "create_recognition") as create_recognition:
+            patch.object(thanks_handler, "create_recognition") as create_recognition, \
+            patch.object(thanks_handler, "release_connection") as release_connection:
             app.commands["/thanks"](ack, body, client)
 
         ack.assert_called_once()
         get_connection.assert_called_once()
         get_recent_received_recognitions.assert_called_once_with(conn, "U123", 10)
         create_recognition.assert_not_called()
-        self.assertTrue(conn.closed)
+        release_connection.assert_called_once_with(conn)
         self.assertEqual(len(client.ephemeral_messages), 1)
         self.assertEqual(client.ephemeral_messages[0]["user"], "U123")
         return client.ephemeral_messages[0]["text"]
