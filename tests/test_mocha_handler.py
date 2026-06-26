@@ -59,7 +59,7 @@ class FakeClient:
 
         self.deleted_messages.append(kwargs)
 
-    def conversations_pin(self, **kwargs):
+    def pins_add(self, **kwargs):
         if self.pin_error:
             raise self.pin_error
 

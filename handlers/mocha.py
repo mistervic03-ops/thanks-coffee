@@ -156,7 +156,7 @@ def handle_pin_command(client, body):
         return
 
     try:
-        client.conversations_pin(
+        client.pins_add(
             channel=ANNOUNCEMENT_CHANNEL_ID,
             timestamp=response["ts"],
         )
