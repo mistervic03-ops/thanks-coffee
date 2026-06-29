@@ -552,7 +552,6 @@ def _get_stats_for_dates(conn, start_date, end_date):
             WHERE {date_filter}
             GROUP BY receiver_id
             ORDER BY SUM(unit_count) DESC, COUNT(*) DESC
-            LIMIT 5
             """,
             params,
         )
@@ -572,7 +571,6 @@ def _get_stats_for_dates(conn, start_date, end_date):
             WHERE {date_filter}
             GROUP BY sender_id
             ORDER BY SUM(unit_count) DESC, COUNT(*) DESC
-            LIMIT 5
             """,
             params,
         )
