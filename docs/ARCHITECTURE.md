@@ -101,14 +101,16 @@ DB 연결은 `psycopg2.pool.ThreadedConnectionPool`을 사용한다. `init_db()`
 
 ## 8. Scheduler 동작 방식
 
-Scheduler는 optional component다. `SCHEDULER_ENABLED=true`일 때만 APScheduler로 주간/월간 요약 게시와 feed 재시도를 예약한다. Scheduler가 꺼져 있어도 slash command 기반 `/mocha summary weekly`, `/mocha summary monthly` 흐름과 앱 시작 시 1회 feed 재시도는 유지된다.
+Scheduler는 optional component다. `SCHEDULER_ENABLED=true`이면 APScheduler로 주간/월간 요약 게시와 feed 재시도를 예약한다. `REMINDER_ENABLED=true`이면 주간 감사 리마인더를 예약한다. Scheduler가 꺼져 있어도 slash command 기반 `/mocha summary weekly`, `/mocha summary monthly` 흐름과 앱 시작 시 1회 feed 재시도는 유지된다.
 
-- `app.py`가 프로세스 시작 시 `SCHEDULER_ENABLED`를 확인하고, true이면 `start_scheduler(bolt_app)`를 호출한다.
+- `app.py`가 프로세스 시작 시 `SCHEDULER_ENABLED`와 `REMINDER_ENABLED`를 확인하고, 둘 중 하나라도 true이면 `start_scheduler(bolt_app, ...)`를 호출한다.
 - 스케줄러는 `BackgroundScheduler`로 실행되며 Bolt Socket Mode 연결과 독립적으로 동작한다.
 - timezone은 명시적으로 `Asia/Seoul`을 사용한다.
 - 주간 요약은 매주 월요일 09:00 KST에 실행되며, 직전 월요일부터 직전 일요일까지의 recognition을 집계한다.
 - 월간 요약은 매월 1일 09:00 KST에 실행되며, 직전 월의 recognition을 집계한다.
 - feed 재시도는 10분마다 실행되며 `feed_post_status='failed'`이고 `retry_count < 3`인 recognition을 다시 게시한다.
+- 주간 감사 리마인더는 매주 수요일 10:00 KST에 실행되며, Slack `users.list`에서 `deleted=false`이고 봇 계정이 아닌 사용자 중 한 명을 랜덤으로 선택한다.
+- 리마인더 문구는 Claude API로 생성한다. Claude API 호출에 실패하면 사전 정의된 fallback 문구를 게시하고 `notify_cached_admins()`로 관리자에게 DM을 보낸다.
 - 요약 집계는 `db/queries.py`, 메시지 생성은 `services/stats.py`, 전사 공지 채널 게시는 `services/feed.py`가 담당한다.
 - 자동 주간/월간 요약 게시에 성공하면 `services/admin.py`가 관리자 전체에게 관리자용 상세 현황 Block Kit DM을 보낸다.
 - 자동 주간/월간 요약은 PostgreSQL advisory lock을 사용해 여러 프로세스에서 scheduler가 동시에 실행되어도 하나만 게시한다. lock 획득에 실패한 프로세스는 조용히 skip한다.

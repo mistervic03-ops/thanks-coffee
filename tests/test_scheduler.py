@@ -21,6 +21,94 @@ class FakeConnection:
     pass
 
 
+class FakeApp:
+    def __init__(self):
+        self.client = object()
+
+
+class FakeBackgroundScheduler:
+    instances = []
+
+    def __init__(self, timezone):
+        self.timezone = timezone
+        self.jobs = []
+        self.running = False
+        FakeBackgroundScheduler.instances.append(self)
+
+    def add_job(self, func, trigger, **kwargs):
+        self.jobs.append({"func": func, "trigger": trigger, **kwargs})
+
+    def start(self):
+        self.running = True
+
+
+class FakeReminderClient:
+    def __init__(self, users_responses=None):
+        self.users_responses = users_responses or []
+        self.users_list_calls = []
+        self.posted_messages = []
+
+    def users_list(self, **kwargs):
+        self.users_list_calls.append(kwargs)
+        return self.users_responses.pop(0)
+
+    def chat_postMessage(self, **kwargs):
+        self.posted_messages.append(kwargs)
+        return {"ts": "123.456"}
+
+
+class FakeAnthropicMessages:
+    def __init__(self, response):
+        self.response = response
+        self.create_calls = []
+
+    def create(self, **kwargs):
+        self.create_calls.append(kwargs)
+        return self.response
+
+
+class FakeAnthropicClient:
+    def __init__(self, response):
+        self.messages = FakeAnthropicMessages(response)
+
+
+class SchedulerRegistrationTest(unittest.TestCase):
+    def setUp(self):
+        scheduler._scheduler = None
+        FakeBackgroundScheduler.instances = []
+
+    def tearDown(self):
+        scheduler._scheduler = None
+
+    def test_start_scheduler_registers_existing_jobs_when_enabled(self):
+        with patch.object(scheduler, "BackgroundScheduler", FakeBackgroundScheduler):
+            scheduler_instance = scheduler.start_scheduler(
+                FakeApp(),
+                summary_jobs_enabled=True,
+                reminder_enabled=False,
+            )
+
+        self.assertEqual(
+            [job["id"] for job in scheduler_instance.jobs],
+            ["weekly_summary", "monthly_summary", "feed_retry"],
+        )
+
+    def test_start_scheduler_registers_reminder_only_when_only_reminder_enabled(self):
+        with patch.object(scheduler, "BackgroundScheduler", FakeBackgroundScheduler):
+            scheduler_instance = scheduler.start_scheduler(
+                FakeApp(),
+                summary_jobs_enabled=False,
+                reminder_enabled=True,
+            )
+
+        self.assertEqual([job["id"] for job in scheduler_instance.jobs], ["weekly_reminder"])
+        reminder_job = scheduler_instance.jobs[0]
+        self.assertEqual(reminder_job["trigger"], "cron")
+        self.assertEqual(reminder_job["day_of_week"], "wed")
+        self.assertEqual(reminder_job["hour"], 10)
+        self.assertEqual(reminder_job["minute"], 0)
+
+
 class ScheduledSummaryLockTest(unittest.TestCase):
     def test_lock_success_posts_summary_and_releases_lock(self):
         conn = FakeConnection()
@@ -112,6 +200,141 @@ class WeeklyRangeTest(unittest.TestCase):
 
         self.assertEqual(start_date, date(2026, 6, 1))
         self.assertEqual(end_date, date(2026, 6, 18))
+
+
+class WeeklyReminderTest(unittest.TestCase):
+    def test_get_active_workspace_users_filters_deleted_and_bots(self):
+        client = FakeReminderClient(
+            users_responses=[
+                {
+                    "members": [
+                        {
+                            "id": "UACTIVE",
+                            "deleted": False,
+                            "is_bot": False,
+                            "profile": {"display_name": "민수"},
+                        },
+                        {
+                            "id": "UDELETED",
+                            "deleted": True,
+                            "is_bot": False,
+                            "profile": {"display_name": "퇴사자"},
+                        },
+                    ],
+                    "response_metadata": {"next_cursor": "NEXT"},
+                },
+                {
+                    "members": [
+                        {
+                            "id": "UBOT",
+                            "deleted": False,
+                            "is_bot": True,
+                            "profile": {"display_name": "bot"},
+                        },
+                        {
+                            "id": "USLACKBOT",
+                            "deleted": False,
+                            "is_bot": False,
+                            "profile": {"display_name": "Slackbot"},
+                        },
+                        {
+                            "id": "USECOND",
+                            "deleted": False,
+                            "is_bot": False,
+                            "profile": {"real_name": "지윤"},
+                        },
+                    ],
+                    "response_metadata": {"next_cursor": ""},
+                },
+            ]
+        )
+
+        users = scheduler.get_active_workspace_users(client)
+
+        self.assertEqual(
+            users,
+            [
+                {"id": "UACTIVE", "name": "민수"},
+                {"id": "USECOND", "name": "지윤"},
+            ],
+        )
+        self.assertEqual(client.users_list_calls, [{}, {"cursor": "NEXT"}])
+
+    def test_run_weekly_reminder_posts_claude_text(self):
+        client = FakeReminderClient(
+            users_responses=[
+                {
+                    "members": [
+                        {
+                            "id": "UACTIVE",
+                            "deleted": False,
+                            "is_bot": False,
+                            "profile": {"display_name": "민수"},
+                        }
+                    ]
+                }
+            ]
+        )
+        anthropic_client = FakeAnthropicClient(
+            {"content": [{"text": "민: 믿음직한 협업 고마워요.\n/thanks @민수 고마운 내용"}]}
+        )
+
+        with patch.object(scheduler, "create_anthropic_client", return_value=anthropic_client), \
+            patch.object(scheduler, "notify_cached_admins") as notify_cached_admins:
+            scheduler.run_weekly_reminder(client)
+
+        self.assertEqual(
+            client.posted_messages,
+            [
+                {
+                    "channel": "C123",
+                    "text": "민: 믿음직한 협업 고마워요.\n/thanks @민수 고마운 내용",
+                }
+            ],
+        )
+        notify_cached_admins.assert_not_called()
+        self.assertEqual(
+            anthropic_client.messages.create_calls[0]["model"],
+            scheduler.ANTHROPIC_MODEL,
+        )
+
+    def test_run_weekly_reminder_uses_fallback_and_notifies_admins_on_claude_failure(self):
+        client = FakeReminderClient()
+        user = {"id": "UACTIVE", "name": "민수"}
+        template = "오늘은 {name}님에게 `/thanks {mention} 고마워요`를 보내보세요."
+
+        with patch.object(scheduler, "get_active_workspace_users", return_value=[user]), \
+            patch.object(
+                scheduler,
+                "build_claude_reminder_text",
+                side_effect=RuntimeError("claude down"),
+            ), \
+            patch.object(scheduler.random, "choice", side_effect=[user, template]), \
+            patch.object(scheduler, "notify_cached_admins") as notify_cached_admins:
+            scheduler.run_weekly_reminder(client)
+
+        self.assertEqual(
+            client.posted_messages,
+            [
+                {
+                    "channel": "C123",
+                    "text": "오늘은 민수님에게 `/thanks <@UACTIVE> 고마워요`를 보내보세요.",
+                }
+            ],
+        )
+        notify_cached_admins.assert_called_once_with(
+            "[mocha] 주간 리마인더 Claude API 호출에 실패했습니다: claude down"
+        )
+
+    def test_build_fallback_reminder_text_uses_random_template(self):
+        user = {"id": "UACTIVE", "name": "민수"}
+        template = "{name}님에게 `/thanks {mention} 고마워요`를 남겨보세요."
+
+        with patch.object(scheduler.random, "choice", return_value=template) as choice:
+            text = scheduler.build_fallback_reminder_text(user)
+
+        choice.assert_called_once_with(scheduler.FALLBACK_REMINDER_TEMPLATES)
+        self.assertEqual(text, "민수님에게 `/thanks <@UACTIVE> 고마워요`를 남겨보세요.")
 
 
 if __name__ == "__main__":

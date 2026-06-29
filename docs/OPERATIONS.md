@@ -10,12 +10,15 @@ PoC 단계의 기본 운영은 Slack에서 `/mocha summary weekly` 또는 `/moch
 
 `SCHEDULER_ENABLED=true`이면 주간/월간 요약과 실패한 feed 게시 재시도 스케줄이 자동 실행된다. 자동 스케줄은 `scheduler.py`에서 관리한다.
 
+`REMINDER_ENABLED=true`이면 주간 감사 리마인더 스케줄이 자동 실행된다. 리마인더는 전사 공지 채널에 게시되며, Claude API 호출에 실패하면 사전 정의된 fallback 문구를 게시하고 관리자에게 DM으로 알린다.
+
 - 주간 요약: 매주 월요일 09:00 KST
 - 월간 요약: 매월 1일 09:00 KST
 - 실패한 feed 게시 재시도: 10분마다
+- 주간 감사 리마인더: 매주 수요일 10:00 KST
 - timezone은 `Asia/Seoul`로 고정한다.
 
-Spark PoC에서는 `SCHEDULER_ENABLED=false`로 시작하고, 자동 요약 게시나 10분 간격 feed 재시도가 필요해지면 `true`로 바꾼 뒤 프로세스를 재시작한다. 스케줄 시간을 바꾸려면 `scheduler.py`의 `add_job` 설정을 수정하고 프로세스를 재시작한다.
+Spark PoC에서는 `SCHEDULER_ENABLED=false`, `REMINDER_ENABLED=false`로 시작한다. 자동 요약 게시나 10분 간격 feed 재시도가 필요해지면 `SCHEDULER_ENABLED=true`로, 주간 리마인더가 필요해지면 `REMINDER_ENABLED=true`로 바꾼 뒤 프로세스를 재시작한다. 스케줄 시간을 바꾸려면 `scheduler.py`의 `add_job` 설정을 수정하고 프로세스를 재시작한다.
 
 자동 주간/월간 요약은 PostgreSQL advisory lock으로 보호된다. `SCHEDULER_ENABLED=true`인 프로세스가 2개 이상 떠 있어도 lock을 획득한 프로세스 하나만 게시하고, 나머지는 조용히 skip한다.
 

@@ -8,6 +8,7 @@ import threading
 from config import (
     HEALTH_CHECK_ENABLED,
     HEALTH_CHECK_PORT,
+    REMINDER_ENABLED,
     SCHEDULER_ENABLED,
     SLACK_APP_TOKEN,
     SLACK_BOT_TOKEN,
@@ -118,8 +119,12 @@ def run_app():
         init_admin_cache(bolt_app.client)
         notify_admins(bolt_app.client, "[mocha] 봇이 시작되었습니다.")
         init_db()
-        if SCHEDULER_ENABLED:
-            scheduler_instance = start_scheduler(bolt_app)
+        if SCHEDULER_ENABLED or REMINDER_ENABLED:
+            scheduler_instance = start_scheduler(
+                bolt_app,
+                summary_jobs_enabled=SCHEDULER_ENABLED,
+                reminder_enabled=REMINDER_ENABLED,
+            )
         if HEALTH_CHECK_ENABLED:
             threading.Thread(target=run_fastapi, daemon=True).start()
         retry_failed_feeds(bolt_app)
